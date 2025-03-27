@@ -7,10 +7,5 @@ public class OfconsProposerMsg {
 	public OfconsProposerMsg(String i) {
 		this.message = i;
 	}
-	public int v; // 111
-	
-	public OfconsProposerMsg(int v) {
-		this.v = v;
-	}
 
 }
