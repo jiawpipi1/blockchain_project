@@ -1,9 +1,9 @@
 package com.example;
 
-public class ReadMsg {
+public class WriteResponseMsg {
     public final int ballot;
     
-    public ReadMsg(int ballot) {
+    public WriteResponseMsg(int ballot) {
         this.ballot = ballot;
     }
 }
