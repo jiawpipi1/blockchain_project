@@ -9,8 +9,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 public class Main {
 
-    public static int N = 10;
-
+    public static int N = 3;
+    public static AtomicInteger decideCount = new AtomicInteger(0); 
+    public static long startTime; 
 
     public static void main(String[] args) throws InterruptedException {
 
@@ -31,7 +32,16 @@ public class Main {
         for (ActorRef actor : references) {
             actor.tell(m, ActorRef.noSender());
         }
+        
+        startTime = System.currentTimeMillis();
+        
         OfconsProposerMsg opm = new OfconsProposerMsg("100");
         references.get(0).tell(opm, ActorRef.noSender());
+    }
+    
+    public static synchronized void reportDelay() {
+        long delay = System.currentTimeMillis() - startTime;
+        akka.event.Logging.getLogger(akka.actor.ActorSystem.create(), "Main")
+                .info("Consensus delay = " + delay + " ms");
     }
 }

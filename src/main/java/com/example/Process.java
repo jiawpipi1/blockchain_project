@@ -11,16 +11,19 @@ import java.util.Map;
 
 public class Process extends UntypedAbstractActor {
 	private final LoggingAdapter log = Logging.getLogger(getContext().getSystem(), this);
-	private final int N; // 總進程數
-	private final int id; // 進程 ID
-	private Members processes; // 其他進程的參考
+	private final int N; 
+	private final int id; 
+	private Members processes; 
 	private String proposal = null;
 	private int ballot = 0;
 	private int readballot = 0;
 	private int imposeballot = 0;
 	private String estimate = null;
-	private Map<ActorRef, int[]> states = new HashMap<>(); // 存儲 [imposeballot, estimate]
-	private Map<ActorRef, Integer> ackResponses = new HashMap<>(); // 存儲 ACK 回應
+	private Map<ActorRef, int[]> states = new HashMap<>(); 
+	private Map<ActorRef, Integer> ackResponses = new HashMap<>(); 
+	
+	private long startTime = -1;
+	private long endTime = -1;
 
 	private boolean decided = false;
 	private boolean crashed = false;
@@ -44,6 +47,10 @@ public class Process extends UntypedAbstractActor {
 	    proposal = v;
 	    ballot += N;
 	    states.clear();
+	    
+	    if (startTime == -1) {
+	        startTime = System.nanoTime(); 
+	    }
 
 	    log.info("Process {} proposes message: {}", id, v);
 
@@ -147,7 +154,7 @@ public class Process extends UntypedAbstractActor {
 	    if (decided) return; 
 
 	    ackResponses.put(sender, b);
-
+	    log.info("Process {} recieves ack message, total ack received: {}", id, ackResponses.size());
 	    if (ackResponses.size() > N / 2) { 
 	        decided = true;
 	        log.info("Process {} decides on message: {}", id, proposal);
@@ -156,6 +163,8 @@ public class Process extends UntypedAbstractActor {
 	                actor.tell(new DecideMsg(proposal), self());
 	            }
 	        }
+	        int count = Main.decideCount.incrementAndGet();
+	        log.info("Current decideCount = {}", count);
 	    }
 	}
 
@@ -173,6 +182,14 @@ public class Process extends UntypedAbstractActor {
 	        if (!actor.equals(self())) { 
 	            actor.tell(new DecideMsg(v), self());
 	        }
+	    }
+	    
+	    int count = Main.decideCount.incrementAndGet();
+	    log.info("Current decideCount = {} and N = {}", count, N);
+
+	    if (count == N) {
+	    	log.info("Consensus reached! Reporting delay...");
+	        Main.reportDelay();
 	    }
 	}
 
