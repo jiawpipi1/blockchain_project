@@ -3,6 +3,8 @@ import akka.actor.ActorRef;
 import akka.actor.ActorSystem;
 import java.util.*;
 import java.util.stream.Stream;
+import java.util.ArrayList;
+import java.util.concurrent.atomic.AtomicInteger;
 
 
 public class Main {
@@ -29,7 +31,6 @@ public class Main {
         for (ActorRef actor : references) {
             actor.tell(m, ActorRef.noSender());
         }
-        
         OfconsProposerMsg opm = new OfconsProposerMsg("100");
         references.get(0).tell(opm, ActorRef.noSender());
     }
