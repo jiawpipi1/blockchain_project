@@ -11,19 +11,17 @@ import java.util.Map;
 
 public class Process extends UntypedAbstractActor {
 	private final LoggingAdapter log = Logging.getLogger(getContext().getSystem(), this);
-	private final int N; 
-	private final int id; 
-	private Members processes; 
+	private final int N;
+	private final int id;
+	private boolean hold = false;
+	private Members processes;
 	private String proposal = null;
 	private int ballot = 0;
 	private int readballot = 0;
 	private int imposeballot = 0;
 	private String estimate = null;
-	private Map<ActorRef, int[]> states = new HashMap<>(); 
-	private Map<ActorRef, Integer> ackResponses = new HashMap<>(); 
-	
-	private long startTime = -1;
-	private long endTime = -1;
+	private Map<ActorRef, int[]> states = new HashMap<>();
+	private Map<ActorRef, Integer> ackResponses = new HashMap<>();
 
 	private boolean decided = false;
 	private boolean crashed = false;
@@ -38,29 +36,40 @@ public class Process extends UntypedAbstractActor {
 		return Props.create(Process.class, () -> new Process(ID, nb));
 	}
 
+	private void startLeadership() {
+		
+		log.info("Process {} is elected as leader. Sending HOLD message...", id);
+		for (ActorRef actor : processes.references) {
+			if (!actor.equals(self())) {
+				actor.tell(new HoldMsg(), self());
+			}
+		}
+	}
+
+	private void handleHold() {
+		log.info("Process {} received HOLD message. Stopping propose operations.", id);
+		hold = true;
+	}
+
 	/**
 	 * 發起提案
 	 */
 	private void propose(String v) {
-	    if (crashed || decided) return; 
-	    
-	    proposal = v;
-	    ballot += N;
-	    states.clear();
-	    
-	    if (startTime == -1) {
-	        startTime = System.nanoTime(); 
-	    }
+		if (crashed || decided)
+			return;
 
-	    log.info("Process {} proposes message: {}", id, v);
+		proposal = v;
+		ballot += N;
+		states.clear();
 
-	    for (ActorRef actor : processes.references) {
-	        if (!actor.equals(self())) {
-	            actor.tell(new ReadMsg(ballot), self());
-	        }
-	    }
+		log.info("Process {} proposes message: {}", id, v);
+
+		for (ActorRef actor : processes.references) {
+			if (!actor.equals(self())) {
+				actor.tell(new ReadMsg(ballot), self());
+			}
+		}
 	}
-
 
 	/**
 	 * 接收 READballot 請求
@@ -94,7 +103,7 @@ public class Process extends UntypedAbstractActor {
 		log.info("Process {} received GatherMsg: b={}, estBallot={}, statesSize={}", id, b, estBallot, states.size());
 		log.info("and with est={}", est);
 
-		if (states.size() > N / 2) { 
+		if (states.size() > N / 2) {
 			int maxBallot = -1;
 			String selectedValue = null;
 
@@ -109,15 +118,15 @@ public class Process extends UntypedAbstractActor {
 				proposal = selectedValue;
 			}
 
-			imposeballot = ballot; 
+			imposeballot = ballot;
 			ackResponses.clear();
 
 			log.info("Process {} moves to write phase with proposal: {}", id, proposal);
 
 			for (ActorRef actor : processes.references) {
-				if (!actor.equals(self())) { 
-			        actor.tell(new ImposMsg(ballot, proposal), self());
-			    }
+				if (!actor.equals(self())) {
+					actor.tell(new ImposMsg(ballot, proposal), self());
+				}
 			}
 		}
 	}
@@ -126,73 +135,69 @@ public class Process extends UntypedAbstractActor {
 	 * 接收 IMPOSballot 請求
 	 */
 	private void handleImposeRequest(int b, String v, ActorRef sender) {
-	    log.info("Process {} received ImposMsg: b={}, v={}",
-	            id, b, v);
-	    log.info("Process {}, readballot={}, imposeballot={}, estimate={}",
-	            id, readballot, imposeballot, estimate);
+		log.info("Process {} received ImposMsg: b={}, v={}", id, b, v);
+		log.info("Process {}, readballot={}, imposeballot={}, estimate={}", id, readballot, imposeballot, estimate);
 
-	    if (readballot > b || imposeballot > b) {
-	        sender.tell(new AbortMsg(b), self());
-	        log.info("Process {} rejects ImposMsg: b={}, current readballot={}, imposeballot={}",
-	                id, b, readballot, imposeballot);
-	        log.info("and estimate={}",
-	                 estimate);
-	    } else {
-	        estimate = v;
-	        imposeballot = b;
-	        sender.tell(new AckMsg(b), self());
-	        log.info("Process {} accepts ImposMsg and sends AckMsg: new readballot={}, imposeballot={}, estimate={}",
-	                id, readballot, imposeballot, estimate);
-	    }
+		if (readballot > b || imposeballot > b) {
+			sender.tell(new AbortMsg(b), self());
+			log.info("Process {} rejects ImposMsg: b={}, current readballot={}, imposeballot={}", id, b, readballot,
+					imposeballot);
+			log.info("and estimate={}", estimate);
+		} else {
+			estimate = v;
+			imposeballot = b;
+			sender.tell(new AckMsg(b), self());
+			log.info("Process {} accepts ImposMsg and sends AckMsg: new readballot={}, imposeballot={}, estimate={}",
+					id, readballot, imposeballot, estimate);
+		}
 	}
-
 
 	/**
 	 * 處理 ACKballot 回應
 	 */
 	private void handleAckResponse(int b, ActorRef sender) {
-	    if (decided) return; 
+		if (decided)
+			return;
 
-	    ackResponses.put(sender, b);
-	    log.info("Process {} recieves ack message, total ack received: {}", id, ackResponses.size());
-	    if (ackResponses.size() > N / 2) { 
-	        decided = true;
-	        log.info("Process {} decides on message: {}", id, proposal);
-	        for (ActorRef actor : processes.references) {
-	            if (!actor.equals(self())) { 
-	                actor.tell(new DecideMsg(proposal), self());
-	            }
-	        }
-	        int count = Main.decideCount.incrementAndGet();
-	        log.info("Current decideCount = {}", count);
-	    }
+		ackResponses.put(sender, b);
+		log.info("Process {} recieves ack message, total ack received: {}", id, ackResponses.size());
+		if (ackResponses.size() > N / 2) {
+			decided = true;
+			log.info("Process {} decides on message: {}", id, proposal);
+			for (ActorRef actor : processes.references) {
+				if (!actor.equals(self())) {
+					actor.tell(new DecideMsg(proposal), self());
+				}
+			}
+			int count = Main.decideCount.incrementAndGet();
+			log.info("Current decideCount = {}", count);
+		}
 	}
-
 
 	/**
 	 * 接收 DECIDE 訊息
 	 */
 	private void handleDecide(String v) {
-	    if (decided) return; 
+		if (decided)
+			return;
 
-	    decided = true;
-	    proposal = v;
-	    log.info("Process {} final decision: {}", id, v);
-	    for (ActorRef actor : processes.references) {
-	        if (!actor.equals(self())) { 
-	            actor.tell(new DecideMsg(v), self());
-	        }
-	    }
-	    
-	    int count = Main.decideCount.incrementAndGet();
-	    log.info("Current decideCount = {} and N = {}", count, N);
+		decided = true;
+		proposal = v;
+		log.info("Process {} final decision: {}", id, v);
+		for (ActorRef actor : processes.references) {
+			if (!actor.equals(self())) {
+				actor.tell(new DecideMsg(v), self());
+			}
+		}
 
-	    if (count == N) {
-	    	log.info("Consensus reached! Reporting delay...");
-	        Main.reportDelay();
-	    }
+		int count = Main.decideCount.incrementAndGet();
+		log.info("Current decideCount = {} and N = {}", count, N);
+
+		if (count == N) {
+			log.info("Consensus reached! Reporting delay...");
+			Main.reportDelay();
+		}
 	}
-
 
 	@Override
 	public void onReceive(Object message) {
@@ -201,7 +206,11 @@ public class Process extends UntypedAbstractActor {
 
 		if (message instanceof Members) {
 			processes = (Members) message;
-			//log.info("Process {} received process list", id);
+			// log.info("Process {} received process list", id);
+		} else if (message instanceof LeaderSelectionMsg) {
+			startLeadership(); // 成為 leader，發送 HOLD 訊息
+		} else if (message instanceof HoldMsg) {
+			handleHold();
 		} else if (message instanceof OfconsProposerMsg) {
 			propose(((OfconsProposerMsg) message).message);
 		} else if (message instanceof ReadMsg) {
