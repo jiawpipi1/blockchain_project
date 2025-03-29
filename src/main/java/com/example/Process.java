@@ -52,7 +52,7 @@ public class Process extends UntypedAbstractActor {
 	}
 
 	/**
-	 * 發起提案
+	 * 發起提案 Propose()
 	 */
 	private void propose(String v) {
 		if (crashed || decided)
@@ -72,7 +72,7 @@ public class Process extends UntypedAbstractActor {
 	}
 
 	/**
-	 * 接收 READballot 請求
+	 * 接收 READballot 請求 Receive READballot request
 	 */
 	private void handleReadRequest(int b, ActorRef sender) {
 
@@ -90,7 +90,7 @@ public class Process extends UntypedAbstractActor {
 	}
 
 	/**
-	 * 處理 READballot 回應
+	 * 處理 READballot 回應 Process READballot response
 	 */
 	private void handleReadResponse(int b, int estBallot, String est, ActorRef sender) {
 		if (imposeballot == ballot) {
@@ -132,7 +132,7 @@ public class Process extends UntypedAbstractActor {
 	}
 
 	/**
-	 * 接收 IMPOSballot 請求
+	 * 接收 IMPOSballot 請求 Receive IMPOSballot request
 	 */
 	private void handleImposeRequest(int b, String v, ActorRef sender) {
 		log.info("Process {} received ImposMsg: b={}, v={}", id, b, v);
@@ -153,7 +153,7 @@ public class Process extends UntypedAbstractActor {
 	}
 
 	/**
-	 * 處理 ACKballot 回應
+	 * 處理 ACKballot 回應 Process ACKballot response
 	 */
 	private void handleAckResponse(int b, ActorRef sender) {
 		if (decided)
@@ -175,7 +175,7 @@ public class Process extends UntypedAbstractActor {
 	}
 
 	/**
-	 * 接收 DECIDE 訊息
+	 * 接收 DECIDE 訊息 Receive DECIDE message
 	 */
 	private void handleDecide(String v) {
 		if (decided)
