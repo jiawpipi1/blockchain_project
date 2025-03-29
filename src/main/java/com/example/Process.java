@@ -22,11 +22,13 @@ public class Process extends UntypedAbstractActor {
 	private String estimate = null;
 	private Map<ActorRef, int[]> states = new HashMap<>();
 	private Map<ActorRef, Integer> ackResponses = new HashMap<>();
+	private static volatile boolean firstDecisionMade = false;  // 確保只有第一個 process 記錄
+	private static volatile long startTime = 0;
 
 	private boolean decided = false;
 
 	// Handling crash
-	private static final double CRASH_PROBABILITY = 0.1;
+	private static final double CRASH_PROBABILITY = 0;
 	private boolean isFaultProneMode = false;
 	private boolean isSilentMode = false;
 
@@ -37,6 +39,11 @@ public class Process extends UntypedAbstractActor {
 
 	public static Props createActor(int ID, int nb) {
 		return Props.create(Process.class, () -> new Process(ID, nb));
+	}
+	
+	private void handleLaunch() {
+	        String value = (Math.random() > 0.5) ? "1" : "0";
+	        propose(value);
 	}
 
 	private void startLeadership() {
@@ -73,6 +80,11 @@ public class Process extends UntypedAbstractActor {
 			}
 		}
 	}
+	
+	private void handleAbort(int b) {
+	    log.info("Process {} received AbortMsg for ballot {}. Retrying proposal...", id, b);
+	    propose(proposal); // 重新發起提案
+	}
 
 	/**
 	 * 接收 READballot 請求 Receive READballot request
@@ -105,17 +117,17 @@ public class Process extends UntypedAbstractActor {
 
 		log.info("Process {} received GatherMsg: b={}, estBallot={}, statesSize={}", id, b, estBallot, states.size());
 		log.info("and with est={}", est);
-
 		if (states.size() > N / 2) {
 			int maxBallot = -1;
 			String selectedValue = null;
 
-			for (int[] state : states.values()) {
-				if (state[0] > maxBallot) {
-					maxBallot = state[0];
-					selectedValue = state[1] == 1 ? est : null;
-				}
-			}
+			for (Map.Entry<ActorRef, int[]> entry : states.entrySet()) {
+		        int[] state = entry.getValue();
+		        if (state[0] > maxBallot) { // 選擇最大的 ballot
+		            maxBallot = state[0];
+		            selectedValue = state[1] == 1 ? est : null;
+		        }
+		    }
 
 			if (maxBallot > 0) {
 				proposal = selectedValue;
@@ -165,6 +177,14 @@ public class Process extends UntypedAbstractActor {
 		ackResponses.put(sender, b);
 		log.info("Process {} recieves ack message, total ack received: {}", id, ackResponses.size());
 		if (ackResponses.size() > N / 2) {
+			long endTime = System.currentTimeMillis();
+			
+			synchronized (Process.class) {
+		        if (!firstDecisionMade) {  
+		            firstDecisionMade = true;
+		            Main.reportDelay();
+		        }
+		    }
 			decided = true;
 			log.info("Process {} decides on message: {}", id, proposal);
 			for (ActorRef actor : processes.references) {
@@ -186,6 +206,9 @@ public class Process extends UntypedAbstractActor {
 
 		decided = true;
 		proposal = v;
+		
+		
+		
 		log.info("Process {} final decision: {}", id, v);
 		for (ActorRef actor : processes.references) {
 			if (!actor.equals(self())) {
@@ -196,20 +219,16 @@ public class Process extends UntypedAbstractActor {
 		int count = Main.decideCount.incrementAndGet();
 		log.info("Current decideCount = {} and N = {}", count, N);
 
-		if (count == N) {
-			log.info("Consensus reached! Reporting delay...");
-			Main.reportDelay();
-		}
 	}
 
 	// Determines if process crash. If crash, enters silent mode forever, else continues.
 	private boolean determineIfWillCrash() {
-		if (Math.random() < CRASH_PROBABILITY) {
+		if (Math.random() > CRASH_PROBABILITY) {
 			return false; 
 		}
 		// Process will crash
 		isSilentMode = true;
-		log.info("Process {} has crashed.", id);
+		log.info("Process {} has crashed prob = {}.", id);
 		return true;
 	}
 
@@ -230,14 +249,14 @@ public class Process extends UntypedAbstractActor {
 		if (message instanceof Members) {
 			processes = (Members) message;
 			// log.info("Process {} received process list", id);
-		} else if (message instanceof CrashMsg) {
+		}else if (message instanceof LaunchMsg) {
+	        handleLaunch();
+		}else if (message instanceof CrashMsg) {
 			isFaultProneMode = true;
 		} else if (message instanceof LeaderSelectionMsg) {
 			startLeadership(); // 成為 leader，發送 HOLD 訊息
 		} else if (message instanceof HoldMsg) {
 			handleHold();
-		} else if (message instanceof OfconsProposerMsg) {
-			propose(((OfconsProposerMsg) message).message);
 		} else if (message instanceof ReadMsg) {
 			handleReadRequest(((ReadMsg) message).ballot, getSender());
 		} else if (message instanceof GatherMsg) {
