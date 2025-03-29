@@ -68,7 +68,6 @@ public class Main {
 
 		OfconsProposerMsg opm = new OfconsProposerMsg("100");
 		references.get(0).tell(opm, ActorRef.noSender());
-		System.out.println("nooooo");
 	}
 
 	public static synchronized void reportDelay() {
