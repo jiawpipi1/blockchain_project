@@ -22,7 +22,7 @@ public class Process extends UntypedAbstractActor {
 	private String estimate = null;
 	private Map<ActorRef, int[]> states = new HashMap<>();
 	private Map<ActorRef, Integer> ackResponses = new HashMap<>();
-
+	
 	private boolean decided = false;
 
 	// Handling crash
@@ -30,9 +30,13 @@ public class Process extends UntypedAbstractActor {
 	private boolean isFaultProneMode = false;
 	private boolean isSilentMode = false;
 
+	// testing
+	private static int testCount = 0;
+	
 	public Process(int ID, int nb) {
-		N = nb;
 		id = ID;
+		N = nb;
+
 	}
 
 	public static Props createActor(int ID, int nb) {
@@ -204,13 +208,18 @@ public class Process extends UntypedAbstractActor {
 
 	// Determines if process crash. If crash, enters silent mode forever, else continues.
 	private boolean determineIfWillCrash() {
-		if (Math.random() < CRASH_PROBABILITY) {
+		if (Math.random() >= CRASH_PROBABILITY) {
 			return false; 
 		}
 		// Process will crash
 		isSilentMode = true;
 		log.info("Process {} has crashed.", id);
 		return true;
+	}
+	
+	// Returns true if process is fault-prone
+	public boolean checkIfFaultProne() {
+		return isFaultProneMode; 
 	}
 
 	@Override
@@ -250,6 +259,13 @@ public class Process extends UntypedAbstractActor {
 			handleAckResponse(((AckMsg) message).ballot, getSender());
 		} else if (message instanceof DecideMsg) {
 			handleDecide(((DecideMsg) message).proposal);
+		} else if (message instanceof TestMsg) {
+//			// testing purposes to show that leader election is repeating
+//			testCount++;
+//			log.info("testCount is {}", testCount);
+//			if (testCount == 10) {
+//				Main.reportDelay();
+//			}
 		}
 	}
 }
