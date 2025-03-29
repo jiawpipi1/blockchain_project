@@ -38,6 +38,7 @@ public class Main {
 
 		int leaderIndex = new Random().nextInt(N);
 
+		// Initiate leader election
 		system.scheduler().scheduleOnce(Duration.create(50, TimeUnit.MILLISECONDS), references.get(leaderIndex),
 				new LeaderSelectionMsg(leaderIndex + 1), system.dispatcher(), null);
 

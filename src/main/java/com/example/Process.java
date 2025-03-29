@@ -24,8 +24,11 @@ public class Process extends UntypedAbstractActor {
 	private Map<ActorRef, Integer> ackResponses = new HashMap<>();
 
 	private boolean decided = false;
-	private boolean crashed = false;
+
+	// Handling crash
 	private static final double CRASH_PROBABILITY = 0.1;
+	private boolean isFaultProneMode = false;
+	private boolean isSilentMode = false;
 
 	public Process(int ID, int nb) {
 		N = nb;
@@ -37,7 +40,6 @@ public class Process extends UntypedAbstractActor {
 	}
 
 	private void startLeadership() {
-		
 		log.info("Process {} is elected as leader. Sending HOLD message...", id);
 		for (ActorRef actor : processes.references) {
 			if (!actor.equals(self())) {
@@ -46,6 +48,7 @@ public class Process extends UntypedAbstractActor {
 		}
 	}
 
+	// After receive HOLD message, process stops proposing. Only leader can propose.
 	private void handleHold() {
 		log.info("Process {} received HOLD message. Stopping propose operations.", id);
 		hold = true;
@@ -55,7 +58,7 @@ public class Process extends UntypedAbstractActor {
 	 * 發起提案 Propose()
 	 */
 	private void propose(String v) {
-		if (crashed || decided)
+		if (decided)
 			return;
 
 		proposal = v;
@@ -199,10 +202,30 @@ public class Process extends UntypedAbstractActor {
 		}
 	}
 
+	// Determines if process crash. If crash, enters silent mode forever, else continues.
+	private boolean determineIfWillCrash() {
+		if (Math.random() < CRASH_PROBABILITY) {
+			return false; 
+		}
+		// Process will crash
+		isSilentMode = true;
+		log.info("Process {} has crashed.", id);
+		return true;
+	}
+
 	@Override
 	public void onReceive(Object message) {
-		if (crashed)
+		if (isSilentMode) {
 			return;
+		}
+		if (isFaultProneMode) {
+			if (determineIfWillCrash() == true) {
+				return; // Process crashes
+			}
+			// Process does not crash, continues as per normal
+		}
+
+		// TODO implement CrashMsg class
 
 		if (message instanceof Members) {
 			processes = (Members) message;
