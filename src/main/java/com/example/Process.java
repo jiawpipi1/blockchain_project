@@ -230,6 +230,8 @@ public class Process extends UntypedAbstractActor {
 		if (message instanceof Members) {
 			processes = (Members) message;
 			// log.info("Process {} received process list", id);
+		} else if (message instanceof CrashMsg) {
+			isFaultProneMode = true;
 		} else if (message instanceof LeaderSelectionMsg) {
 			startLeadership(); // 成為 leader，發送 HOLD 訊息
 		} else if (message instanceof HoldMsg) {

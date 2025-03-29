@@ -1,6 +1,7 @@
 com\lightbend\akka\sample\ProcessBC$QuorumResponse.class
 com\example\Main.class
 com\example\HoldMsg.class
+com\example\CrashMsg.class
 com\lightbend\akka\sample\AkkaQuickstart$ProcessName.class
 com\lightbend\akka\sample\AkkaQuickstart.class
 com\example\HelloWorldMain$SayHello.class
