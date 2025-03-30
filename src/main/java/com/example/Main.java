@@ -2,17 +2,21 @@ package com.example;
 
 import akka.actor.ActorRef;
 import akka.actor.ActorSystem;
+import akka.actor.Cancellable;
 
+import java.time.Duration;
 import java.util.*;
 
 import java.util.ArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class Main {
-	public static final int N = 10; //3,10,100
-	private static final int f = 4; // Number of processes that may crash // 1,4,49
-	private static final int LEADER_ELECTION_TIMEOUT = 2000; // 500, 1000, 1500, 2000
 
+	public static final int N = 100; //3,10,100
+	private static final int f = 49; // Number of processes that may crash // 1,4,49
+	private static final int LEADER_ELECTION_TIMEOUT = 500; // 500, 1000, 1500, 2000
+	
+	private static Cancellable electNewLeaderRepeatedly; 
 	public static AtomicInteger decideCount = new AtomicInteger(0);
 	public static long startTime;
 	private static boolean hasCalculatedDelay = false; 
@@ -87,19 +91,42 @@ public class Main {
             actor.tell(new LaunchMsg(), ActorRef.noSender());
         }
 	
-		// First Delay before leader election 
-		Thread.sleep(LEADER_ELECTION_TIMEOUT);
-		do {
-			// Choose new leader
-			int newLeaderIndex = findNewLeaderIndex(faultyIndexes, references);
-			ActorRef newLeader = references.get(newLeaderIndex);
-			System.out.println("New leader index: " + newLeaderIndex);
-			
-			// Elect new leader
-			newLeader.tell(new LeaderSelectionMsg(newLeaderIndex + 1), ActorRef.noSender());
-			// Subsequent Delays
-			Thread.sleep(LEADER_ELECTION_TIMEOUT);
-		} while (!hasCalculatedDelay); 	
+//		// First Delay before leader election 
+//		Thread.sleep(LEADER_ELECTION_TIMEOUT);
+//		do {
+//			// Choose new leader
+//			int newLeaderIndex = findNewLeaderIndex(faultyIndexes, references);
+//			ActorRef newLeader = references.get(newLeaderIndex);
+//			System.out.println("New leader index: " + newLeaderIndex);
+//			
+//			// Elect new leader
+//			newLeader.tell(new LeaderSelectionMsg(newLeaderIndex + 1), ActorRef.noSender());
+//			// Subsequent Delays
+//			Thread.sleep(LEADER_ELECTION_TIMEOUT);
+//		} while (!hasCalculatedDelay); 	
+		
+		
+		if (hasCalculatedDelay) { // no need to choose new leader if already decided
+			return;
+		}
+		
+		// Choose new leader
+		int newLeaderIndex = findNewLeaderIndex(faultyIndexes, references);
+		ActorRef newLeader = references.get(newLeaderIndex);
+		System.out.println("New leader index: " + newLeaderIndex);
+		
+		// Elect new leader
+		electNewLeaderRepeatedly = system.scheduler().scheduleWithFixedDelay(
+				Duration.ofMillis(LEADER_ELECTION_TIMEOUT), // Initial delay
+				Duration.ofMillis(LEADER_ELECTION_TIMEOUT), // Subsequent delays
+				newLeader,
+				new LeaderSelectionMsg(newLeaderIndex + 1), // Message to send
+				system.dispatcher(), 
+				ActorRef.noSender());
+		
+		// TODO: 
+		// PBM: consensus not reached. Ater newLeader selected, leader don't propose, and other processes on HOLD
+		// SOL: leader to propose, but propose what? estimate/ ballot/ proposal? I will reimplement Process.java class - Sean 
 	}
 
 	public static synchronized void reportDelay(int ID) {
@@ -107,7 +134,10 @@ public class Main {
 			return;
 		}
 		hasCalculatedDelay = true;
-
+		if (electNewLeaderRepeatedly != null) {
+			electNewLeaderRepeatedly.cancel(); // Cancel the leader election
+		}
+		
 		long delay = System.currentTimeMillis() - startTime;
 		akka.event.Logging.getLogger(akka.actor.ActorSystem.create(), "Main")
 				.info(ID + " reach deside with, consensus delay = " + delay + " ms");
