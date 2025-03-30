@@ -2,28 +2,31 @@ package com.example;
 
 import akka.actor.ActorRef;
 import akka.actor.ActorSystem;
-import scala.inline;
 import scala.concurrent.duration.Duration;
 
-import java.security.PrivateKey;
 import java.util.*;
-import java.util.stream.Stream;
 
 import java.util.ArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.ThreadLocalRandom;
 
 public class Main {
 	public static final int N = 100;
 	private static final int f = 10; // Number of processes that may crash
 	private static final int LEADER_ELECTION_TIMEOUT = 500; // 500, 1000, 1500, 2000
 	
+<<<<<<< HEAD
 	public static AtomicInteger decideCount = new AtomicInteger(0);
 	public static long startTime;
 	private static boolean hasCalculatedDelay = false;
 	
 
+=======
+	public static int N = 3;
+	public static AtomicInteger decideCount = new AtomicInteger(0);
+	public static long startTime;
+	private static int f = 1; // Number of processes that may crash
+>>>>>>> 84c36972aea2620c6446ea97c64b13e2ae357605
 	
 	// Send special crash messages to f processes at random
 	private static void sendCrashMessages(ArrayList<Integer> randomIndexes, ArrayList<ActorRef> references) {
@@ -82,6 +85,17 @@ public class Main {
 		for (ActorRef actor : references) {
 			actor.tell(m, ActorRef.noSender());
 		}
+<<<<<<< HEAD
+=======
+		// Send special crash messages to f processes at random
+		sendCrashMessages(references);
+		
+		int leaderIndex = new Random().nextInt(N);
+		
+		// Initiate leader election
+		system.scheduler().scheduleOnce(Duration.create(500, TimeUnit.MILLISECONDS), references.get(leaderIndex),
+				new LeaderSelectionMsg(leaderIndex + 1), system.dispatcher(), null);
+>>>>>>> 84c36972aea2620c6446ea97c64b13e2ae357605
 
 		ArrayList<Integer> faultyIndexes = getFaultyIndexes();
 		// Send special crash messages to f processes at random
@@ -89,6 +103,7 @@ public class Main {
 
 		// Start timer
 		startTime = System.currentTimeMillis();
+<<<<<<< HEAD
 
 		// Start proposing (all processes)
 		OfconsProposerMsg opm = new OfconsProposerMsg("100");
@@ -109,6 +124,12 @@ public class Main {
 			Thread.sleep(LEADER_ELECTION_TIMEOUT); 	// repeat
 		} while (!hasCalculatedDelay); 	
 //		System.out.println("out of the loop");
+=======
+		
+		for (ActorRef actor : references) {
+            actor.tell(new LaunchMsg(), ActorRef.noSender());
+        }
+>>>>>>> 84c36972aea2620c6446ea97c64b13e2ae357605
 	}
 
 	public static synchronized void reportDelay() {

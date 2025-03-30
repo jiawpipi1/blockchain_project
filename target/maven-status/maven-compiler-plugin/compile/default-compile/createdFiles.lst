@@ -28,6 +28,7 @@ com\example\OfconsProposerMsg.class
 com\lightbend\akka\sample\MainBC.class
 com\example\Members.class
 com\lightbend\akka\sample\ProcessNtoN$Members.class
+com\example\LaunchMsg.class
 com\lightbend\akka\sample\MainNtoN$ProcessName.class
 com\lightbend\akka\sample\MainNtoN.class
 com\example\LeaderSelectionMsg.class
