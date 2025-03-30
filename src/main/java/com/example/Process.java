@@ -46,7 +46,7 @@ public class Process extends UntypedAbstractActor {
 	}
 
 	private void handleLaunch() {
-		String value = (Math.random() > 0.5) ? "1" : "0";
+		String value = (Math.random() >= 0.5) ? "1" : "0";
 		propose(value);
 	}
 
