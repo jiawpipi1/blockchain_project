@@ -51,6 +51,10 @@ public class Process extends UntypedAbstractActor {
 	}
 
 	private void startLeadership() {
+		if (decided) {
+			return; // Already decided, no need to start leadership
+		}
+		
 		log.info("Process {} is elected as leader. Sending HOLD message...", id);
 		for (ActorRef actor : processes.references) {
 			if (!actor.equals(self())) {

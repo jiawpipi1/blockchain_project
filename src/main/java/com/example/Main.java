@@ -106,7 +106,7 @@ public class Main {
 //			// Subsequent Delays
 //			Thread.sleep(LEADER_ELECTION_TIMEOUT);
 //		} while (!hasCalculatedDelay); 	
-		
+//		
 		
 		if (hasCalculatedDelay) { // no need to choose new leader if already decided
 			return;
@@ -138,7 +138,7 @@ public class Main {
 		
 		long delay = System.currentTimeMillis() - startTime;
 		akka.event.Logging.getLogger(akka.actor.ActorSystem.create(), "Main")
-				.info(ID + " reach deside with, consensus delay = " + delay + " ms");
+				.info("Process " + ID + " has reached DECIDE with consensus delay = " + delay + " ms");
 
 	}
 
