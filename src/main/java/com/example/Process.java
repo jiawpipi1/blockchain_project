@@ -35,7 +35,7 @@ public class Process extends UntypedAbstractActor {
 
 	// testing
 	private static int testCount = 0;
-	
+
 	public Process(int ID, int nb) {
 		id = ID;
 		N = nb;
@@ -44,10 +44,10 @@ public class Process extends UntypedAbstractActor {
 	public static Props createActor(int ID, int nb) {
 		return Props.create(Process.class, () -> new Process(ID, nb));
 	}
-	
+
 	private void handleLaunch() {
-	        String value = (Math.random() > 0.5) ? "1" : "0";
-	        propose(value);
+		String value = (Math.random() > 0.5) ? "1" : "0";
+		propose(value);
 	}
 
 	private void startLeadership() {
@@ -84,10 +84,10 @@ public class Process extends UntypedAbstractActor {
 			}
 		}
 	}
-	
+
 	private void handleAbort(int b) {
-	    log.info("Process {} received AbortMsg for ballot {}. Retrying proposal...", id, b);
-	    propose(proposal); // 重新發起提案
+		log.info("Process {} received AbortMsg for ballot {}. Retrying proposal...", id, b);
+		propose(proposal); // 重新發起提案
 	}
 
 	/**
@@ -126,12 +126,12 @@ public class Process extends UntypedAbstractActor {
 			String selectedValue = null;
 
 			for (Map.Entry<ActorRef, int[]> entry : states.entrySet()) {
-		        int[] state = entry.getValue();
-		        if (state[0] > maxBallot) { // 選擇最大的 ballot
-		            maxBallot = state[0];
-		            selectedValue = state[1] == 1 ? est : null;
-		        }
-		    }
+				int[] state = entry.getValue();
+				if (state[0] > maxBallot) { // 選擇最大的 ballot
+					maxBallot = state[0];
+					selectedValue = state[1] == 1 ? est : null;
+				}
+			}
 
 			if (maxBallot > 0) {
 				proposal = selectedValue;
@@ -183,8 +183,9 @@ public class Process extends UntypedAbstractActor {
 		if (ackResponses.size() > N / 2) {
 			// @LEO changed: propose to remove, endTime not used?
 //			long endTime = System.currentTimeMillis();
-			
-			// @LEO changed: propose to remove. firstDecisionMade not needed. can use hasCalculatedDelay in Main.java
+
+			// @LEO changed: propose to remove. firstDecisionMade not needed. can use
+			// hasCalculatedDelay in Main.java
 //			synchronized (Process.class) {
 //		        if (!firstDecisionMade) {  
 //		            firstDecisionMade = true;
@@ -212,9 +213,7 @@ public class Process extends UntypedAbstractActor {
 
 		decided = true;
 		proposal = v;
-		
-		
-		
+
 		log.info("Process {} final decision: {}", id, v);
 		for (ActorRef actor : processes.references) {
 			if (!actor.equals(self())) {
@@ -227,20 +226,21 @@ public class Process extends UntypedAbstractActor {
 
 	}
 
-	// Determines if process crash. If crash, enters silent mode forever, else continues.
+	// Determines if process crash. If crash, enters silent mode forever, else
+	// continues.
 	private boolean determineIfWillCrash() {
 		if (Math.random() >= CRASH_PROBABILITY) {
-			return false; 
+			return false;
 		}
 		// Process will crash
 		isSilentMode = true;
 		log.info("Process {} has crashed prob = {}.", id);
 		return true;
 	}
-	
+
 	// Returns true if process is fault-prone
 	public boolean checkIfFaultProne() {
-		return isFaultProneMode; 
+		return isFaultProneMode;
 	}
 
 	@Override
@@ -248,21 +248,17 @@ public class Process extends UntypedAbstractActor {
 		if (isSilentMode) {
 			return;
 		}
-		if (isFaultProneMode) {
-			if (determineIfWillCrash() == true) {
+		if (isFaultProneMode && determineIfWillCrash()) {
 				return; // Process crashes
 			}
-			// Process does not crash, continues as per normal
-		}
-
-		// TODO implement CrashMsg class
+		// Process does not crash, continues as per normal
 
 		if (message instanceof Members) {
 			processes = (Members) message;
 			// log.info("Process {} received process list", id);
-		}else if (message instanceof LaunchMsg) {
-	        handleLaunch();
-		}else if (message instanceof CrashMsg) {
+		} else if (message instanceof LaunchMsg) {
+			handleLaunch();
+		} else if (message instanceof CrashMsg) {
 			isFaultProneMode = true;
 		} else if (message instanceof LeaderSelectionMsg) {
 			startLeadership(); // 成為 leader，發送 HOLD 訊息
@@ -280,13 +276,6 @@ public class Process extends UntypedAbstractActor {
 			handleAckResponse(((AckMsg) message).ballot, getSender());
 		} else if (message instanceof DecideMsg) {
 			handleDecide(((DecideMsg) message).proposal);
-		} else if (message instanceof TestMsg) {
-//			// testing purposes to show that leader election is repeating
-//			testCount++;
-//			log.info("testCount is {}", testCount);
-//			if (testCount == 10) {
-//				Main.reportDelay();
-//			}
 		}
 	}
 }

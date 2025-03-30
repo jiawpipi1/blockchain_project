@@ -2,31 +2,20 @@ package com.example;
 
 import akka.actor.ActorRef;
 import akka.actor.ActorSystem;
-import scala.concurrent.duration.Duration;
 
 import java.util.*;
 
 import java.util.ArrayList;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class Main {
-	public static final int N = 100;
-	private static final int f = 10; // Number of processes that may crash
-	private static final int LEADER_ELECTION_TIMEOUT = 500; // 500, 1000, 1500, 2000
-	
-<<<<<<< HEAD
-	public static AtomicInteger decideCount = new AtomicInteger(0);
-	public static long startTime;
-	private static boolean hasCalculatedDelay = false;
-	
+	public static final int N = 3; //3,10,100
+	private static final int f = 1; // Number of processes that may crash // 1,4,49
+	private static final int LEADER_ELECTION_TIMEOUT = 2000; // 500, 1000, 1500, 2000
 
-=======
-	public static int N = 3;
 	public static AtomicInteger decideCount = new AtomicInteger(0);
 	public static long startTime;
-	private static int f = 1; // Number of processes that may crash
->>>>>>> 84c36972aea2620c6446ea97c64b13e2ae357605
+	private static boolean hasCalculatedDelay = false; // @LEO changed: replaces firstDecisionMade in Process.java
 	
 	// Send special crash messages to f processes at random
 	private static void sendCrashMessages(ArrayList<Integer> randomIndexes, ArrayList<ActorRef> references) {
@@ -85,51 +74,32 @@ public class Main {
 		for (ActorRef actor : references) {
 			actor.tell(m, ActorRef.noSender());
 		}
-<<<<<<< HEAD
-=======
-		// Send special crash messages to f processes at random
-		sendCrashMessages(references);
-		
-		int leaderIndex = new Random().nextInt(N);
-		
-		// Initiate leader election
-		system.scheduler().scheduleOnce(Duration.create(500, TimeUnit.MILLISECONDS), references.get(leaderIndex),
-				new LeaderSelectionMsg(leaderIndex + 1), system.dispatcher(), null);
->>>>>>> 84c36972aea2620c6446ea97c64b13e2ae357605
 
 		ArrayList<Integer> faultyIndexes = getFaultyIndexes();
 		// Send special crash messages to f processes at random
-//		sendCrashMessages(faultyIndexes, references);
+		sendCrashMessages(faultyIndexes, references);
 
 		// Start timer
 		startTime = System.currentTimeMillis();
-<<<<<<< HEAD
 
-		// Start proposing (all processes)
-		OfconsProposerMsg opm = new OfconsProposerMsg("100");
-		references.get(0).tell(opm, ActorRef.noSender());
-
-		// Initiate leader election every LEADER_ELECTION_TIMEOUT
+		// Start proposing
+		for (ActorRef actor : references) {
+            actor.tell(new LaunchMsg(), ActorRef.noSender());
+        }
+	
+		// First Delay before leader election 
+		Thread.sleep(LEADER_ELECTION_TIMEOUT);
 		do {
+			// Choose new leader
 			int newLeaderIndex = findNewLeaderIndex(faultyIndexes, references);
 			ActorRef newLeader = references.get(newLeaderIndex);
 			System.out.println("New leader index: " + newLeaderIndex);
 			
-			// Change LeaderSelectionMsg to TestMsg for testing
-			// Cannot seem to make this work
-//			system.scheduler().scheduleOnce(Duration.create(50, TimeUnit.MILLISECONDS), newLeader,
-//					new LeaderSelectionMsg(newLeaderIndex + 1), system.dispatcher(), null);	
-			// but this works
+			// Elect new leader
 			newLeader.tell(new LeaderSelectionMsg(newLeaderIndex + 1), ActorRef.noSender());
-			Thread.sleep(LEADER_ELECTION_TIMEOUT); 	// repeat
+			// Subsequent Delays
+			Thread.sleep(LEADER_ELECTION_TIMEOUT);
 		} while (!hasCalculatedDelay); 	
-//		System.out.println("out of the loop");
-=======
-		
-		for (ActorRef actor : references) {
-            actor.tell(new LaunchMsg(), ActorRef.noSender());
-        }
->>>>>>> 84c36972aea2620c6446ea97c64b13e2ae357605
 	}
 
 	public static synchronized void reportDelay() {
