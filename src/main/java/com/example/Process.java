@@ -160,7 +160,7 @@ public class Process extends UntypedAbstractActor {
 
 			for (ActorRef actor : processes.references) {
 				if (!actor.equals(self())) {
-					actor.tell(new ImposMsg(ballot, proposal), self());
+					actor.tell(new ImposeMsg(ballot, proposal), self());
 				}
 			}
 		}
@@ -251,7 +251,7 @@ public class Process extends UntypedAbstractActor {
 		}
 		// Process will crash
 		isSilentMode = true;
-		log.info("Process {} has crashed prob = {}.", id);
+		log.info("Process {} has crashed prob = {}.", id, CRASH_PROBABILITY);
 		return true;
 	}
 
@@ -286,8 +286,8 @@ public class Process extends UntypedAbstractActor {
 		} else if (message instanceof GatherMsg) {
 			GatherMsg msg = (GatherMsg) message;
 			handleReadResponse(msg.ballot, msg.imposeballot, msg.estimate, getSender());
-		} else if (message instanceof ImposMsg) {
-			ImposMsg msg = (ImposMsg) message;
+		} else if (message instanceof ImposeMsg) {
+			ImposeMsg msg = (ImposeMsg) message;
 			handleImposeRequest(msg.ballot, msg.proposal, getSender());
 		} else if (message instanceof AckMsg) {
 			handleAckResponse(((AckMsg) message).ballot, getSender());

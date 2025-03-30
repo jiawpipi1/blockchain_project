@@ -90,7 +90,9 @@ public class Main {
 		for (ActorRef actor : references) {
             actor.tell(new LaunchMsg(), ActorRef.noSender());
         }
-	
+		
+		// Alternative way for leader election 
+		
 //		// First Delay before leader election 
 //		Thread.sleep(LEADER_ELECTION_TIMEOUT);
 //		do {
@@ -122,11 +124,7 @@ public class Main {
 				newLeader,
 				new LeaderSelectionMsg(newLeaderIndex + 1), // Message to send
 				system.dispatcher(), 
-				ActorRef.noSender());
-		
-		// TODO: 
-		// PBM: consensus not reached. Ater newLeader selected, leader don't propose, and other processes on HOLD
-		// SOL: leader to propose, but propose what? estimate/ ballot/ proposal? I will reimplement Process.java class - Sean 
+				ActorRef.noSender()); 
 	}
 
 	public static synchronized void reportDelay(int ID) {
