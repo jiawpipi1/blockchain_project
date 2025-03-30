@@ -22,7 +22,8 @@ public class Process extends UntypedAbstractActor {
 	private String estimate = null;
 	private Map<ActorRef, int[]> states = new HashMap<>();
 	private Map<ActorRef, Integer> ackResponses = new HashMap<>();
-	private static volatile boolean firstDecisionMade = false;  // 確保只有第一個 process 記錄
+	private Map<ActorRef, String> estimateMap = new HashMap<>();
+	private static volatile boolean firstDecisionMade = false; // 確保只有第一個 process 記錄
 	private static volatile long startTime = 0;
 
 	private boolean decided = false;
@@ -40,10 +41,10 @@ public class Process extends UntypedAbstractActor {
 	public static Props createActor(int ID, int nb) {
 		return Props.create(Process.class, () -> new Process(ID, nb));
 	}
-	
+
 	private void handleLaunch() {
-	        String value = (Math.random() > 0.5) ? "1" : "0";
-	        propose(value);
+		String value = (Math.random() > 0.5) ? "1" : "0";
+		propose(value);
 	}
 
 	private void startLeadership() {
@@ -80,10 +81,18 @@ public class Process extends UntypedAbstractActor {
 			}
 		}
 	}
-	
+
 	private void handleAbort(int b) {
-	    log.info("Process {} received AbortMsg for ballot {}. Retrying proposal...", id, b);
-	    propose(proposal); // 重新發起提案
+		 if (b == ballot) {
+		        log.info("Process {} received AbortMsg for ballot {}. Retrying proposal...", id, b);
+		        
+		        // 清空現有的 state 以便重新發起提案
+		        states.clear();
+		        ackResponses.clear();
+
+		        // 重新發起提案
+		        propose(proposal);
+		    }
 	}
 
 	/**
@@ -98,7 +107,7 @@ public class Process extends UntypedAbstractActor {
 			log.info("Process {} aborts ReadMsg for b={}", id, b);
 		} else {
 			readballot = b;
-			sender.tell(new GatherMsg(b, imposeballot, estimate), self());
+			sender.tell(new GatherMsg(b, imposeballot, estimate != null ? estimate : proposal), self());
 			log.info("Process {} accepts ReadMsg and sends GatherMsg: new readballot={}, imposeballot={}, estimate={}",
 					id, readballot, imposeballot, estimate);
 		}
@@ -114,6 +123,9 @@ public class Process extends UntypedAbstractActor {
 		}
 
 		states.put(sender, new int[] { estBallot, est != null ? 1 : 0 });
+		if (est != null) {
+		    estimateMap.put(sender, est);
+		}
 
 		log.info("Process {} received GatherMsg: b={}, estBallot={}, statesSize={}", id, b, estBallot, states.size());
 		log.info("and with est={}", est);
@@ -122,17 +134,25 @@ public class Process extends UntypedAbstractActor {
 			String selectedValue = null;
 
 			for (Map.Entry<ActorRef, int[]> entry : states.entrySet()) {
-		        int[] state = entry.getValue();
-		        if (state[0] > maxBallot) { // 選擇最大的 ballot
-		            maxBallot = state[0];
-		            selectedValue = state[1] == 1 ? est : null;
-		        }
-		    }
+				int[] state = entry.getValue();
+				if (state[0] > maxBallot) { // 選擇最大的 ballot
+					maxBallot = state[0];
+					selectedValue =  estimateMap.get(entry.getKey());
+				}else if (state[0] == maxBallot) { 
+					log.info("Checking estimateMap: " + estimateMap);
+				    // Ballot 相同時選擇最小的 estimate
+				    String candidateValue = estimateMap.get(entry.getKey());
+				    if (candidateValue != null && (selectedValue == null || candidateValue.compareTo(selectedValue) > 0)) {
+				        selectedValue = candidateValue;
+				    }
+				}
+			}
 
 			if (maxBallot > 0) {
 				proposal = selectedValue;
+			} else {
+				proposal = proposal != null ? proposal : "default_value"; // 確保不為 null
 			}
-
 			imposeballot = ballot;
 			ackResponses.clear();
 
@@ -153,17 +173,17 @@ public class Process extends UntypedAbstractActor {
 		log.info("Process {} received ImposMsg: b={}, v={}", id, b, v);
 		log.info("Process {}, readballot={}, imposeballot={}, estimate={}", id, readballot, imposeballot, estimate);
 
-		if (readballot > b || imposeballot > b) {
-			sender.tell(new AbortMsg(b), self());
-			log.info("Process {} rejects ImposMsg: b={}, current readballot={}, imposeballot={}", id, b, readballot,
-					imposeballot);
-			log.info("and estimate={}", estimate);
-		} else {
-			estimate = v;
+		if (b >= imposeballot) {
+			estimate = v; // 強制更新
 			imposeballot = b;
 			sender.tell(new AckMsg(b), self());
 			log.info("Process {} accepts ImposMsg and sends AckMsg: new readballot={}, imposeballot={}, estimate={}",
 					id, readballot, imposeballot, estimate);
+		} else {
+			sender.tell(new AbortMsg(b), self()); // 明確 reject
+			log.info("Process {} rejects ImposMsg: b={}, current readballot={}, imposeballot={}", id, b, readballot,
+					imposeballot);
+			log.info("and estimate={}", estimate);
 		}
 	}
 
@@ -176,16 +196,14 @@ public class Process extends UntypedAbstractActor {
 
 		ackResponses.put(sender, b);
 		log.info("Process {} recieves ack message, total ack received: {}", id, ackResponses.size());
-		if (ackResponses.size() > N / 2) {
-			long endTime = System.currentTimeMillis();
-			
+		if (ackResponses.size() > N / 2 && imposeballot == ballot) {
 			synchronized (Process.class) {
-		        if (!firstDecisionMade) {  
-		            firstDecisionMade = true;
-		            Main.reportDelay();
-		        }
-		    }
-			decided = true;
+				if (!firstDecisionMade) {
+					firstDecisionMade = true;
+					Main.reportDelay();
+				}
+			}
+			
 			log.info("Process {} decides on message: {}", id, proposal);
 			for (ActorRef actor : processes.references) {
 				if (!actor.equals(self())) {
@@ -206,9 +224,7 @@ public class Process extends UntypedAbstractActor {
 
 		decided = true;
 		proposal = v;
-		
-		
-		
+
 		log.info("Process {} final decision: {}", id, v);
 		for (ActorRef actor : processes.references) {
 			if (!actor.equals(self())) {
@@ -221,10 +237,11 @@ public class Process extends UntypedAbstractActor {
 
 	}
 
-	// Determines if process crash. If crash, enters silent mode forever, else continues.
+	// Determines if process crash. If crash, enters silent mode forever, else
+	// continues.
 	private boolean determineIfWillCrash() {
 		if (Math.random() > CRASH_PROBABILITY) {
-			return false; 
+			return false;
 		}
 		// Process will crash
 		isSilentMode = true;
@@ -249,9 +266,9 @@ public class Process extends UntypedAbstractActor {
 		if (message instanceof Members) {
 			processes = (Members) message;
 			// log.info("Process {} received process list", id);
-		}else if (message instanceof LaunchMsg) {
-	        handleLaunch();
-		}else if (message instanceof CrashMsg) {
+		} else if (message instanceof LaunchMsg) {
+			handleLaunch();
+		} else if (message instanceof CrashMsg) {
 			isFaultProneMode = true;
 		} else if (message instanceof LeaderSelectionMsg) {
 			startLeadership(); // 成為 leader，發送 HOLD 訊息
@@ -267,7 +284,9 @@ public class Process extends UntypedAbstractActor {
 			handleImposeRequest(msg.ballot, msg.proposal, getSender());
 		} else if (message instanceof AckMsg) {
 			handleAckResponse(((AckMsg) message).ballot, getSender());
-		} else if (message instanceof DecideMsg) {
+		} else if (message instanceof AbortMsg) {
+		    handleAbort(((AbortMsg) message).ballot);
+		}else if (message instanceof DecideMsg) {
 			handleDecide(((DecideMsg) message).proposal);
 		}
 	}
