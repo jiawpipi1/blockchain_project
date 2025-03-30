@@ -23,8 +23,7 @@ public class Process extends UntypedAbstractActor {
 	private Map<ActorRef, int[]> states = new HashMap<>();
 	private Map<ActorRef, Integer> ackResponses = new HashMap<>();
 	private Map<ActorRef, String> estimateMap = new HashMap<>();
-	private static volatile boolean firstDecisionMade = false; // 確保只有第一個 process 記錄
-	private static volatile long startTime = 0;
+
 
 	private boolean decided = false;
 
@@ -33,9 +32,12 @@ public class Process extends UntypedAbstractActor {
 	private boolean isFaultProneMode = false;
 	private boolean isSilentMode = false;
 
+	// testing
+	private static int testCount = 0;
+
 	public Process(int ID, int nb) {
-		N = nb;
 		id = ID;
+		N = nb;
 	}
 
 	public static Props createActor(int ID, int nb) {
@@ -196,14 +198,9 @@ public class Process extends UntypedAbstractActor {
 
 		ackResponses.put(sender, b);
 		log.info("Process {} recieves ack message, total ack received: {}", id, ackResponses.size());
-		if (ackResponses.size() > N / 2 && imposeballot == ballot) {
-			synchronized (Process.class) {
-				if (!firstDecisionMade) {
-					firstDecisionMade = true;
-					Main.reportDelay();
-				}
-			}
-			
+		if (ackResponses.size() > N / 2) {
+			Main.reportDelay();
+			decided = true;
 			log.info("Process {} decides on message: {}", id, proposal);
 			for (ActorRef actor : processes.references) {
 				if (!actor.equals(self())) {
@@ -240,7 +237,7 @@ public class Process extends UntypedAbstractActor {
 	// Determines if process crash. If crash, enters silent mode forever, else
 	// continues.
 	private boolean determineIfWillCrash() {
-		if (Math.random() > CRASH_PROBABILITY) {
+		if (Math.random() >= CRASH_PROBABILITY) {
 			return false;
 		}
 		// Process will crash
@@ -249,19 +246,20 @@ public class Process extends UntypedAbstractActor {
 		return true;
 	}
 
+	// Returns true if process is fault-prone
+	public boolean checkIfFaultProne() {
+		return isFaultProneMode;
+	}
+
 	@Override
 	public void onReceive(Object message) {
 		if (isSilentMode) {
 			return;
 		}
-		if (isFaultProneMode) {
-			if (determineIfWillCrash() == true) {
+		if (isFaultProneMode && determineIfWillCrash()) {
 				return; // Process crashes
 			}
-			// Process does not crash, continues as per normal
-		}
-
-		// TODO implement CrashMsg class
+		// Process does not crash, continues as per normal
 
 		if (message instanceof Members) {
 			processes = (Members) message;
