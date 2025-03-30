@@ -138,7 +138,10 @@ public class Process extends UntypedAbstractActor {
 				int[] state = entry.getValue();
 				if (state[0] > maxBallot) { // 選擇最大的 ballot
 					maxBallot = state[0];
-					selectedValue = estimateMap.get(entry.getKey());
+					if(estimateMap.get(entry.getKey())!=null) {
+						selectedValue = estimateMap.get(entry.getKey());
+					}
+					else selectedValue = proposal;
 				}
 			}
 
