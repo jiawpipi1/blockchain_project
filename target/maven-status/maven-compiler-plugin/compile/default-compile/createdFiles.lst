@@ -1,6 +1,7 @@
 com\lightbend\akka\sample\ProcessBC$QuorumResponse.class
 com\example\Main.class
 com\example\HoldMsg.class
+com\example\CrashMsg.class
 com\lightbend\akka\sample\AkkaQuickstart$ProcessName.class
 com\lightbend\akka\sample\AkkaQuickstart.class
 com\example\HelloWorldMain$SayHello.class
@@ -27,6 +28,7 @@ com\example\OfconsProposerMsg.class
 com\lightbend\akka\sample\MainBC.class
 com\example\Members.class
 com\lightbend\akka\sample\ProcessNtoN$Members.class
+com\example\LaunchMsg.class
 com\lightbend\akka\sample\MainNtoN$ProcessName.class
 com\lightbend\akka\sample\MainNtoN.class
 com\example\LeaderSelectionMsg.class
