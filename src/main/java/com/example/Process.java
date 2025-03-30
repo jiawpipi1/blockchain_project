@@ -23,8 +23,6 @@ public class Process extends UntypedAbstractActor {
 	private Map<ActorRef, int[]> states = new HashMap<>();
 	private Map<ActorRef, Integer> ackResponses = new HashMap<>();
 
-//	private static volatile boolean firstDecisionMade = false;  // 確保只有第一個 process 記錄 @LEO changed: propose to remove, can use hasCalculatedDelay in Main.java
-//	private static volatile long startTime = 0; // @LEO changed: propose to remove, not used
 
 	private boolean decided = false;
 
@@ -181,17 +179,8 @@ public class Process extends UntypedAbstractActor {
 		ackResponses.put(sender, b);
 		log.info("Process {} recieves ack message, total ack received: {}", id, ackResponses.size());
 		if (ackResponses.size() > N / 2) {
-			// @LEO changed: propose to remove, endTime not used?
-//			long endTime = System.currentTimeMillis();
 
-			// @LEO changed: propose to remove. firstDecisionMade not needed. can use
-			// hasCalculatedDelay in Main.java
-//			synchronized (Process.class) {
-//		        if (!firstDecisionMade) {  
-//		            firstDecisionMade = true;
-//		            Main.reportDelay();
-//		        }
-//		    }
+			Main.reportDelay();
 			decided = true;
 			log.info("Process {} decides on message: {}", id, proposal);
 			for (ActorRef actor : processes.references) {
