@@ -69,10 +69,8 @@ public class Process extends UntypedAbstractActor {
 	 * 發起提案 Propose()
 	 */
 	private void propose(String v) {
-		if (decided) {
-			log.info("Process {} already decided on {}, but will allow new proposals.", id, proposal);
-			decided = false; // 允許新的提案
-		}
+		if (decided)
+			return;
 
 		proposal = v;
 		ballot += N;
