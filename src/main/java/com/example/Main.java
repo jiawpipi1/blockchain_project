@@ -20,6 +20,7 @@ public class Main {
 	public static AtomicInteger decideCount = new AtomicInteger(0);
 	public static long startTime;
 	private static boolean hasCalculatedDelay = false; 
+	private static ArrayList<ActorRef> references; // List of process references
 	
 	// Send special crash messages to f processes at random
 	private static void sendCrashMessages(ArrayList<Integer> randomIndexes, ArrayList<ActorRef> references) {
@@ -58,6 +59,17 @@ public class Main {
 		return faultyIndexes;
 
 	}
+	
+	// Restart all processes after consensus delay is calculated
+	public static void restartProcesses() {
+		// Create restart message
+		RestartMsg restartMsg = new RestartMsg();
+		// Restart processes
+		for (ActorRef process : references) {
+			process.tell(restartMsg, ActorRef.noSender());
+		}
+		System.out.println("All processes have restarted.");
+	}
 
 	public static void main(String[] args) throws InterruptedException {
 
@@ -65,7 +77,7 @@ public class Main {
 		final ActorSystem system = ActorSystem.create("system");
 		system.log().info("System started with N=" + N);
 
-		ArrayList<ActorRef> references = new ArrayList<>();
+		references = new ArrayList<>();
 
 		for (int i = 0; i < N; i++) {
 			// Instantiate processes
@@ -90,23 +102,6 @@ public class Main {
 		for (ActorRef actor : references) {
             actor.tell(new LaunchMsg(), ActorRef.noSender());
         }
-		
-		// Alternative way for leader election 
-		
-//		// First Delay before leader election 
-//		Thread.sleep(LEADER_ELECTION_TIMEOUT);
-//		do {
-//			// Choose new leader
-//			int newLeaderIndex = findNewLeaderIndex(faultyIndexes, references);
-//			ActorRef newLeader = references.get(newLeaderIndex);
-//			System.out.println("New leader index: " + newLeaderIndex);
-//			
-//			// Elect new leader
-//			newLeader.tell(new LeaderSelectionMsg(newLeaderIndex + 1), ActorRef.noSender());
-//			// Subsequent Delays
-//			Thread.sleep(LEADER_ELECTION_TIMEOUT);
-//		} while (!hasCalculatedDelay); 	
-//		
 		
 		if (hasCalculatedDelay) { // no need to choose new leader if already decided
 			return;
@@ -139,7 +134,6 @@ public class Main {
 		long delay = System.currentTimeMillis() - startTime;
 		akka.event.Logging.getLogger(akka.actor.ActorSystem.create(), "Main")
 				.info("Process " + ID + " has reached DECIDE with consensus delay = " + delay + " ms");
-
 	}
 
 }
