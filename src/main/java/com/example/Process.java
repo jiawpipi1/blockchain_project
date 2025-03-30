@@ -22,6 +22,7 @@ public class Process extends UntypedAbstractActor {
 	private String estimate = null;
 	private Map<ActorRef, int[]> states = new HashMap<>();
 	private Map<ActorRef, Integer> ackResponses = new HashMap<>();
+	private Map<ActorRef, String> estimateMap = new HashMap<>();
 
 
 	private boolean decided = false;
@@ -84,8 +85,16 @@ public class Process extends UntypedAbstractActor {
 	}
 
 	private void handleAbort(int b) {
-		log.info("Process {} received AbortMsg for ballot {}. Retrying proposal...", id, b);
-		propose(proposal); // 重新發起提案
+		 if (b == ballot) {
+		        log.info("Process {} received AbortMsg for ballot {}. Retrying proposal...", id, b);
+		        
+		        // 清空現有的 state 以便重新發起提案
+		        states.clear();
+		        ackResponses.clear();
+
+		        // 重新發起提案
+		        propose(proposal);
+		    }
 	}
 
 	/**
@@ -100,7 +109,7 @@ public class Process extends UntypedAbstractActor {
 			log.info("Process {} aborts ReadMsg for b={}", id, b);
 		} else {
 			readballot = b;
-			sender.tell(new GatherMsg(b, imposeballot, estimate), self());
+			sender.tell(new GatherMsg(b, imposeballot, estimate != null ? estimate : proposal), self());
 			log.info("Process {} accepts ReadMsg and sends GatherMsg: new readballot={}, imposeballot={}, estimate={}",
 					id, readballot, imposeballot, estimate);
 		}
@@ -116,6 +125,9 @@ public class Process extends UntypedAbstractActor {
 		}
 
 		states.put(sender, new int[] { estBallot, est != null ? 1 : 0 });
+		if (est != null) {
+		    estimateMap.put(sender, est);
+		}
 
 		log.info("Process {} received GatherMsg: b={}, estBallot={}, statesSize={}", id, b, estBallot, states.size());
 		log.info("and with est={}", est);
@@ -127,14 +139,22 @@ public class Process extends UntypedAbstractActor {
 				int[] state = entry.getValue();
 				if (state[0] > maxBallot) { // 選擇最大的 ballot
 					maxBallot = state[0];
-					selectedValue = state[1] == 1 ? est : null;
+					selectedValue =  estimateMap.get(entry.getKey());
+				}else if (state[0] == maxBallot) { 
+					log.info("Checking estimateMap: " + estimateMap);
+				    // Ballot 相同時選擇最小的 estimate
+				    String candidateValue = estimateMap.get(entry.getKey());
+				    if (candidateValue != null && (selectedValue == null || candidateValue.compareTo(selectedValue) > 0)) {
+				        selectedValue = candidateValue;
+				    }
 				}
 			}
 
 			if (maxBallot > 0) {
 				proposal = selectedValue;
+			} else {
+				proposal = proposal != null ? proposal : "default_value"; // 確保不為 null
 			}
-
 			imposeballot = ballot;
 			ackResponses.clear();
 
@@ -155,17 +175,17 @@ public class Process extends UntypedAbstractActor {
 		log.info("Process {} received ImposMsg: b={}, v={}", id, b, v);
 		log.info("Process {}, readballot={}, imposeballot={}, estimate={}", id, readballot, imposeballot, estimate);
 
-		if (readballot > b || imposeballot > b) {
-			sender.tell(new AbortMsg(b), self());
-			log.info("Process {} rejects ImposMsg: b={}, current readballot={}, imposeballot={}", id, b, readballot,
-					imposeballot);
-			log.info("and estimate={}", estimate);
-		} else {
-			estimate = v;
+		if (b >= imposeballot) {
+			estimate = v; // 強制更新
 			imposeballot = b;
 			sender.tell(new AckMsg(b), self());
 			log.info("Process {} accepts ImposMsg and sends AckMsg: new readballot={}, imposeballot={}, estimate={}",
 					id, readballot, imposeballot, estimate);
+		} else {
+			sender.tell(new AbortMsg(b), self()); // 明確 reject
+			log.info("Process {} rejects ImposMsg: b={}, current readballot={}, imposeballot={}", id, b, readballot,
+					imposeballot);
+			log.info("and estimate={}", estimate);
 		}
 	}
 
@@ -179,7 +199,6 @@ public class Process extends UntypedAbstractActor {
 		ackResponses.put(sender, b);
 		log.info("Process {} recieves ack message, total ack received: {}", id, ackResponses.size());
 		if (ackResponses.size() > N / 2) {
-
 			Main.reportDelay();
 			decided = true;
 			log.info("Process {} decides on message: {}", id, proposal);
@@ -263,7 +282,9 @@ public class Process extends UntypedAbstractActor {
 			handleImposeRequest(msg.ballot, msg.proposal, getSender());
 		} else if (message instanceof AckMsg) {
 			handleAckResponse(((AckMsg) message).ballot, getSender());
-		} else if (message instanceof DecideMsg) {
+		} else if (message instanceof AbortMsg) {
+		    handleAbort(((AbortMsg) message).ballot);
+		}else if (message instanceof DecideMsg) {
 			handleDecide(((DecideMsg) message).proposal);
 		}
 	}
