@@ -104,6 +104,11 @@ public class Main {
 //			Thread.sleep(LEADER_ELECTION_TIMEOUT);
 //		} while (!hasCalculatedDelay); 	
 		
+		
+		if (hasCalculatedDelay) { // no need to choose new leader if already decided
+			return;
+		}
+		
 		// Choose new leader
 		int newLeaderIndex = findNewLeaderIndex(faultyIndexes, references);
 		ActorRef newLeader = references.get(newLeaderIndex);
@@ -128,8 +133,10 @@ public class Main {
 			return;
 		}
 		hasCalculatedDelay = true;
-		electNewLeaderRepeatedly.cancel(); // stop leader election
-
+		if (electNewLeaderRepeatedly != null) {
+			electNewLeaderRepeatedly.cancel(); // Cancel the leader election
+		}
+		
 		long delay = System.currentTimeMillis() - startTime;
 		akka.event.Logging.getLogger(akka.actor.ActorSystem.create(), "Main")
 				.info("Consensus delay = " + delay + " ms");
