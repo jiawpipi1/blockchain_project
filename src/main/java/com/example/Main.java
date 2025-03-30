@@ -11,14 +11,15 @@ import java.util.ArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class Main {
-	public static final int N = 3; //3,10,100
-	private static final int f = 0; // Number of processes that may crash // 1,4,49
+
+	public static final int N = 10; //3,10,100
+	private static final int f = 4; // Number of processes that may crash // 1,4,49
 	private static final int LEADER_ELECTION_TIMEOUT = 2000; // 500, 1000, 1500, 2000
 	
 	private static Cancellable electNewLeaderRepeatedly; 
 	public static AtomicInteger decideCount = new AtomicInteger(0);
 	public static long startTime;
-	private static boolean hasCalculatedDelay = false; // @LEO changed: replaces firstDecisionMade in Process.java
+	private static boolean hasCalculatedDelay = false; 
 	
 	// Send special crash messages to f processes at random
 	private static void sendCrashMessages(ArrayList<Integer> randomIndexes, ArrayList<ActorRef> references) {
@@ -128,7 +129,7 @@ public class Main {
 		// SOL: leader to propose, but propose what? estimate/ ballot/ proposal? I will reimplement Process.java class - Sean 
 	}
 
-	public static synchronized void reportDelay() {
+	public static synchronized void reportDelay(int ID) {
 		if (hasCalculatedDelay) { // no need to calculate delay again
 			return;
 		}
@@ -139,7 +140,7 @@ public class Main {
 		
 		long delay = System.currentTimeMillis() - startTime;
 		akka.event.Logging.getLogger(akka.actor.ActorSystem.create(), "Main")
-				.info("Consensus delay = " + delay + " ms");
+				.info(ID + " reach deside with, consensus delay = " + delay + " ms");
 
 	}
 
