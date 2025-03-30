@@ -12,8 +12,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 public class Main {
 
-	public static final int N = 100; //3,10,100
-	private static final int f = 49; // Number of processes that may crash // 1,4,49
+	public static final int N = 10; //3,10,100
+	private static final int f = 4; // Number of processes that may crash // 1,4,49
 	private static final int LEADER_ELECTION_TIMEOUT = 500; // 500, 1000, 1500, 2000
 	
 	private static Cancellable electNewLeaderRepeatedly; 
