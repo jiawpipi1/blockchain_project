@@ -6,6 +6,7 @@ import akka.actor.Cancellable;
 
 import java.time.Duration;
 import java.util.*;
+import java.util.Scanner; 
 
 import java.util.ArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -31,7 +32,10 @@ public class Main {
 	
 	
 	public static void main(String[] args) throws InterruptedException {
-        for (int tle : LEADER_ELECTION_TIMEOUT) { // Iterate through timeout values
+		
+		Scanner scanner = new Scanner(System.in);
+		
+		for (int tle : LEADER_ELECTION_TIMEOUT) { // Iterate through timeout values
             for (int nIdx = 0; nIdx < N.length; nIdx++) { // N and f are related by index
                 int currentN = N[nIdx];
                 int currentF = f[nIdx];
@@ -70,6 +74,12 @@ public class Main {
 
                     calculateAverageConsensusDelay(); // Now shows results per combination
                     system.terminate();
+                    System.out.println("\nPress 'q' + Enter to continue...");
+                    while (true) {
+                        String input = scanner.nextLine().trim();
+                        if (input.equalsIgnoreCase("q")) break;
+                        System.out.println("Invalid input. Press 'q' + Enter:");
+                    }
                 }
             }
         }
