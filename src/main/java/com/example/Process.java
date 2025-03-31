@@ -13,6 +13,9 @@ public class Process extends UntypedAbstractActor {
 	private final LoggingAdapter log = Logging.getLogger(getContext().getSystem(), this);
 	private final int N;
 	private final int id;
+	private final int f;
+	private final int tle;
+	private final double alpha;
 	private int ballot;
 	private int readballot = 0;
 	private int imposeballot;
@@ -32,16 +35,26 @@ public class Process extends UntypedAbstractActor {
 
 	private static final double CRASH_PROBABILITY = 0;
 
-	public Process(int ID, int nb) {
+	public Process(int ID, int nb, int f, int tle, double alpha) {
 		this.id = ID;
 		this.N = nb;
 		this.ballot = ID - nb;
 		this.imposeballot = ID - nb;
+		this.f = f;
+		this.tle = tle;
+		this.alpha = alpha;
+		
 	}
 	
+	
+	public static Props createActor(int id, int n, int f, int tle, double alpha) {
+	    return Props.create(Process.class, () -> new Process(id, n, f, tle, alpha));
+	}
+	
+	/*
 	public static Props createActor(int ID, int nb) {
 		return Props.create(Process.class, () -> new Process(ID, nb));
-	}
+	}*/
 
 	private void handleLaunch() {
 		String value = (Math.random() >= 0.5) ? "1" : "0";
