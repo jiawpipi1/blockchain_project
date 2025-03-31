@@ -28,6 +28,7 @@ public class Process extends UntypedAbstractActor {
 	private boolean decided = false;
 	private boolean isFaultProneMode = false;
 	private boolean isSilentMode = false;
+	private boolean isDebugMode = false; // For debugging purposes
 
 	private static final double CRASH_PROBABILITY = 0;
 
@@ -37,7 +38,7 @@ public class Process extends UntypedAbstractActor {
 		this.ballot = ID - nb;
 		this.imposeballot = ID - nb;
 	}
-
+	
 	public static Props createActor(int ID, int nb) {
 		return Props.create(Process.class, () -> new Process(ID, nb));
 	}
@@ -74,6 +75,8 @@ public class Process extends UntypedAbstractActor {
 		ballot += N;
 		states.clear();
 
+		 log.info("Process {} proposes message: {}", id, v);
+
 
 		for (ActorRef actor : processes.references) {
 			if (!actor.equals(self())) {
@@ -100,6 +103,12 @@ public class Process extends UntypedAbstractActor {
 		} else {
 			readballot = b;
 			sender.tell(new GatherMsg(b, imposeballot, estimate), self());
+
+			
+			if (isDebugMode) { // Output more info
+				log.info("Process {} accepts ReadMsg and sends GatherMsg: new readballot={}, imposeballot={}, estimate={}",
+			 id, readballot, imposeballot, estimate);
+			}
 		}
 	}
 
@@ -152,6 +161,13 @@ public class Process extends UntypedAbstractActor {
 			estimate = v;
 			imposeballot = b;
 			sender.tell(new AckMsg(b), self());
+
+			
+			if (isDebugMode) { // Output more info
+				log.info("Process {} accepts ImposMsg and sends AckMsg: new readballot={}, imposeballot={}, estimate={}",
+						id, readballot, imposeballot, estimate);
+			}
+			 
 		}
 	}
 

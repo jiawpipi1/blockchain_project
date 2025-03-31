@@ -177,6 +177,7 @@ public class Main {
 		calculateAverageConsensusDelay();
 
 		system.terminate(); // Terminate the actor system
+		System.out.println("System has terminated.");
 		return;
 	}
 
