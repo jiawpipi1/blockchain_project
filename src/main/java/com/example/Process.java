@@ -13,27 +13,23 @@ public class Process extends UntypedAbstractActor {
 	private final LoggingAdapter log = Logging.getLogger(getContext().getSystem(), this);
 	private final int N;
 	private final int id;
-	private boolean hold = false;
-	private Members processes;
-	private String proposal = null;
 	private int ballot;
 	private int readballot = 0;
 	private int imposeballot;
+	private String proposal = null;
 	private String estimate = null;
+	private Members processes;
 	private Map<ActorRef, int[]> states = new HashMap<>();
 	private Map<ActorRef, Integer> ackResponses = new HashMap<>();
 	private Map<ActorRef, String> estimateMap = new HashMap<>();
 
+	private boolean hold = false;
 	private boolean decided = false;
-
-	// Handling crash
-	private static final double CRASH_PROBABILITY = 1;
 	private boolean isFaultProneMode = false;
 	private boolean isSilentMode = false;
 
-	// testing
-	private static int testCount = 0;
-
+	private static final double CRASH_PROBABILITY = 1;
+	
 	public Process(int ID, int nb) {
 		this.id = ID;
 		this.N = nb;
@@ -51,6 +47,10 @@ public class Process extends UntypedAbstractActor {
 	}
 
 	private void startLeadership() {
+		if (decided) {
+			return; // Already decided, no need to start leadership
+		}
+
 		log.info("Process {} is elected as leader. Sending HOLD message...", id);
 		for (ActorRef actor : processes.references) {
 			if (!actor.equals(self())) {
@@ -68,7 +68,7 @@ public class Process extends UntypedAbstractActor {
 	/**
 	 * 發起提案 Propose()
 	 */
-	private void propose(String v) {
+	private void propose(String v) { // TODO: change to int?
 		if (decided)
 			return;
 
@@ -113,9 +113,8 @@ public class Process extends UntypedAbstractActor {
 		} else {
 			readballot = b;
 			sender.tell(new GatherMsg(b, imposeballot, estimate), self());
-			// log.info("Process {} accepts ReadMsg and sends GatherMsg: new readballot={},
-			// imposeballot={}, estimate={}",
-			// id, readballot, imposeballot, estimate);
+//			log.info("Process {} accepts ReadMsg and sends GatherMsg: new readballot={}, imposeballot={}, estimate={}",
+//			 id, readballot, imposeballot, estimate);
 		}
 	}
 
@@ -160,7 +159,7 @@ public class Process extends UntypedAbstractActor {
 
 			for (ActorRef actor : processes.references) {
 				if (!actor.equals(self())) {
-					actor.tell(new ImposMsg(ballot, proposal), self());
+					actor.tell(new ImposeMsg(ballot, proposal), self());
 				}
 			}
 		}
@@ -170,7 +169,7 @@ public class Process extends UntypedAbstractActor {
 	 * 接收 IMPOSballot 請求 Receive IMPOSballot request
 	 */
 	private void handleImposeRequest(int b, String v, ActorRef sender) {
-		// log.info("Process {} received ImposMsg: b={}, v={}", id, b, v);
+//		 log.info("Process {} received ImposMsg: b={}, v={}", id, b, v);
 		// log.info("Process {}, readballot={}, imposeballot={}, estimate={}", id,
 		// readballot, imposeballot, estimate);
 
@@ -184,9 +183,8 @@ public class Process extends UntypedAbstractActor {
 			estimate = v;
 			imposeballot = b;
 			sender.tell(new AckMsg(b), self());
-			// log.info("Process {} accepts ImposMsg and sends AckMsg: new readballot={},
-			// imposeballot={}, estimate={}",
-			// id, readballot, imposeballot, estimate);
+//			log.info("Process {} accepts ImposMsg and sends AckMsg: new readballot={}, imposeballot={}, estimate={}",
+//			 id, readballot, imposeballot, estimate);
 		}
 	}
 
@@ -218,18 +216,19 @@ public class Process extends UntypedAbstractActor {
 	 * 接收 DECIDE 訊息 Receive DECIDE message
 	 */
 	private void handleDecide(String v, int from) {
-		if (proposal != null && proposal.equals(v)) {
-			if (decided)
-				return; 
+		if (proposal != null && proposal.equals(v)) { // @LEO can delete?
+			if (decided) {
+				return;
+			}
 		} else {
 			log.info("Process {} received a new decision proposal: {} from {}", id, v, from);
-			proposal = v; 
+			proposal = v;
 		}
-		//if (decided)
-			//return;
+		// if (decided)
+		// return;
 
 		decided = true;
-		//proposal = v;
+		// proposal = v;
 
 		log.info("Process {} final decision: {} from process {}", id, v, from);
 		for (ActorRef actor : processes.references) {
@@ -239,8 +238,7 @@ public class Process extends UntypedAbstractActor {
 		}
 
 		int count = Main.decideCount.incrementAndGet();
-		// log.info("Current decideCount = {} and N = {}", count, N);
-
+		log.info("Current decideCount = {} and N = {}", count, N);
 	}
 
 	// Determines if process crash. If crash, enters silent mode forever, else
@@ -251,8 +249,27 @@ public class Process extends UntypedAbstractActor {
 		}
 		// Process will crash
 		isSilentMode = true;
-		log.info("Process {} has crashed prob = {}.", id);
+		log.info("Process {} has crashed prob = {}.", id, CRASH_PROBABILITY);
 		return true;
+	}
+	
+	// Restart a process
+	private void handleRestart() {
+		
+		ballot = id - N;
+		readballot = 0;
+		imposeballot = id - N;
+		proposal = null;
+		estimate = null;
+		states.clear();
+		ackResponses.clear();
+		estimateMap.clear();
+		hold = false;
+		decided = false;
+		isFaultProneMode = false;
+		isSilentMode = false;
+
+//		log.info("Process {} has restarted.", id);
 	}
 
 	// Returns true if process is fault-prone
@@ -262,6 +279,10 @@ public class Process extends UntypedAbstractActor {
 
 	@Override
 	public void onReceive(Object message) {
+		if (message instanceof RestartMsg) {
+			handleRestart();
+			return;
+		}
 		if (isSilentMode) {
 			return;
 		}
@@ -286,8 +307,8 @@ public class Process extends UntypedAbstractActor {
 		} else if (message instanceof GatherMsg) {
 			GatherMsg msg = (GatherMsg) message;
 			handleReadResponse(msg.ballot, msg.imposeballot, msg.estimate, getSender());
-		} else if (message instanceof ImposMsg) {
-			ImposMsg msg = (ImposMsg) message;
+		} else if (message instanceof ImposeMsg) {
+			ImposeMsg msg = (ImposeMsg) message;
 			handleImposeRequest(msg.ballot, msg.proposal, getSender());
 		} else if (message instanceof AckMsg) {
 			handleAckResponse(((AckMsg) message).ballot, getSender());
