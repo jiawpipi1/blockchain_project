@@ -6,6 +6,7 @@ C:\Users\leo\akka-quickstart\src\main\java\com\example\DecideMsg.java
 C:\Users\leo\akka-quickstart\src\main\java\com\example\Members.java
 C:\Users\leo\akka-quickstart\src\main\java\com\lightbend\akka\sample\Process.java
 C:\Users\leo\akka-quickstart\src\main\java\com\example\OfconsProposerMsg.java
+C:\Users\leo\akka-quickstart\src\main\java\com\example\RestartMsg.java
 C:\Users\leo\akka-quickstart\src\main\java\com\example\AckMsg.java
 C:\Users\leo\akka-quickstart\src\main\java\com\example\HelloWorldBot.java
 C:\Users\leo\akka-quickstart\src\main\java\com\example\HoldMsg.java
@@ -13,7 +14,7 @@ C:\Users\leo\akka-quickstart\src\main\java\com\lightbend\akka\sample\AkkaQuickst
 C:\Users\leo\akka-quickstart\src\main\java\com\example\LaunchMsg.java
 C:\Users\leo\akka-quickstart\src\main\java\com\example\LeaderSelectionMsg.java
 C:\Users\leo\akka-quickstart\src\main\java\com\example\ReadMsg.java
-C:\Users\leo\akka-quickstart\src\main\java\com\example\ImposMsg.java
+C:\Users\leo\akka-quickstart\src\main\java\com\example\ImposeMsg.java
 C:\Users\leo\akka-quickstart\src\main\java\com\lightbend\akka\sample\MainBC.java
 C:\Users\leo\akka-quickstart\src\main\java\com\example\AbortMsg.java
 C:\Users\leo\akka-quickstart\src\main\java\com\lightbend\akka\sample\ProcessBC.java
