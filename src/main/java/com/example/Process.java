@@ -28,7 +28,6 @@ public class Process extends UntypedAbstractActor {
 	private boolean isFaultProneMode = false;
 	private boolean isSilentMode = false;
 
-	private static int countDecided = 0;
 	private static final double CRASH_PROBABILITY = 1;
 	
 	public Process(int ID, int nb) {
@@ -221,12 +220,6 @@ public class Process extends UntypedAbstractActor {
 	private void handleDecide(String v, int from) {
 		if (proposal != null && proposal.equals(v)) { // @LEO can delete?
 			if (decided) {
-				countDecided++;
-				log.info(from + " has decided. so far: " + countDecided);
-//				if (countDecided == N) { // all processes have decided
-//					Main.restartProcesses();
-//					countDecided = 0; // reset countDecided
-//				}
 				return;
 			}
 		} else {
@@ -247,8 +240,7 @@ public class Process extends UntypedAbstractActor {
 		}
 
 		int count = Main.decideCount.incrementAndGet();
-		// log.info("Current decideCount = {} and N = {}", count, N);
-
+		log.info("Current decideCount = {} and N = {}", count, N);
 	}
 
 	// Determines if process crash. If crash, enters silent mode forever, else
@@ -290,6 +282,10 @@ public class Process extends UntypedAbstractActor {
 
 	@Override
 	public void onReceive(Object message) {
+		if (message instanceof RestartMsg) {
+			handleRestart();
+			return;
+		}
 		if (isSilentMode) {
 			return;
 		}
@@ -323,8 +319,6 @@ public class Process extends UntypedAbstractActor {
 			handleAbort(((AbortMsg) message).ballot);
 		} else if (message instanceof DecideMsg) {
 			handleDecide(((DecideMsg) message).proposal, ((DecideMsg) message).id);
-		} else if (message instanceof RestartMsg) {
-			handleRestart();
 		}
 	}
 }
