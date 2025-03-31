@@ -113,9 +113,8 @@ public class Process extends UntypedAbstractActor {
 		} else {
 			readballot = b;
 			sender.tell(new GatherMsg(b, imposeballot, estimate), self());
-			// log.info("Process {} accepts ReadMsg and sends GatherMsg: new readballot={},
-			// imposeballot={}, estimate={}",
-			// id, readballot, imposeballot, estimate);
+//			log.info("Process {} accepts ReadMsg and sends GatherMsg: new readballot={}, imposeballot={}, estimate={}",
+//			 id, readballot, imposeballot, estimate);
 		}
 	}
 
@@ -170,7 +169,7 @@ public class Process extends UntypedAbstractActor {
 	 * 接收 IMPOSballot 請求 Receive IMPOSballot request
 	 */
 	private void handleImposeRequest(int b, String v, ActorRef sender) {
-		// log.info("Process {} received ImposMsg: b={}, v={}", id, b, v);
+//		 log.info("Process {} received ImposMsg: b={}, v={}", id, b, v);
 		// log.info("Process {}, readballot={}, imposeballot={}, estimate={}", id,
 		// readballot, imposeballot, estimate);
 
@@ -184,9 +183,8 @@ public class Process extends UntypedAbstractActor {
 			estimate = v;
 			imposeballot = b;
 			sender.tell(new AckMsg(b), self());
-			// log.info("Process {} accepts ImposMsg and sends AckMsg: new readballot={},
-			// imposeballot={}, estimate={}",
-			// id, readballot, imposeballot, estimate);
+//			log.info("Process {} accepts ImposMsg and sends AckMsg: new readballot={}, imposeballot={}, estimate={}",
+//			 id, readballot, imposeballot, estimate);
 		}
 	}
 
@@ -258,7 +256,6 @@ public class Process extends UntypedAbstractActor {
 	// Restart a process
 	private void handleRestart() {
 		
-//		processes; // no need restart?
 		ballot = id - N;
 		readballot = 0;
 		imposeballot = id - N;
@@ -272,7 +269,7 @@ public class Process extends UntypedAbstractActor {
 		isFaultProneMode = false;
 		isSilentMode = false;
 
-		log.info("Process {} has restarted.", id);
+//		log.info("Process {} has restarted.", id);
 	}
 
 	// Returns true if process is fault-prone
