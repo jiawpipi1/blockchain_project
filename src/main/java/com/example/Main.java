@@ -47,16 +47,13 @@ public class Main {
 		return leaderIndex;
 	}
 
-	// Return array of f random indexes
 	private static ArrayList<Integer> getFaultyIndexes() {
-		// Create random list of indexes
 		ArrayList<Integer> fullListIndexes = new ArrayList<Integer>();
 		for (int j = 0; j < N; j++) {
 			fullListIndexes.add(j);
 		}
 		Collections.shuffle(fullListIndexes);
 
-		// Add first f elements to randomfList
 		ArrayList<Integer> faultyIndexes = new ArrayList<Integer>();
 		for (int k = 0; k < f; k++) {
 			faultyIndexes.add(fullListIndexes.get(k));
@@ -66,8 +63,8 @@ public class Main {
 	}
 
 	private static void resetSystem() {
-		hasCalculatedDelay = false; // Reset delay calculation flag
-		decideCount.set(0); // Reset decide count
+		hasCalculatedDelay = false; 
+		decideCount.set(0);
 	}
 
 	private static void calculateAverageConsensusDelay() {
@@ -85,20 +82,17 @@ public class Main {
 
 	private static void runOnce(ActorSystem system, ArrayList<ActorRef> references) throws InterruptedException {
 		ArrayList<Integer> faultyIndexes = getFaultyIndexes();
-		// Send special crash messages to f processes at random
 		sendCrashMessages(faultyIndexes, references);
 
-		// Start timer
-		startTime = System.currentTimeMillis();
-
-		// Start proposing
 		for (ActorRef actor : references) {
 			actor.tell(new LaunchMsg(), ActorRef.noSender());
 		}
 
 		// First Delay before leader election
 		Thread.sleep(LEADER_ELECTION_TIMEOUT);
-		do {
+		/* if you want can uncomment
+		 * 
+		 * do {
 			// Choose new leader
 			int newLeaderIndex = findNewLeaderIndex(faultyIndexes, references);
 			ActorRef newLeader = references.get(newLeaderIndex);
@@ -108,9 +102,19 @@ public class Main {
 			newLeader.tell(new LeaderSelectionMsg(newLeaderIndex + 1), ActorRef.noSender());
 			// Subsequent Delays
 			Thread.sleep(LEADER_ELECTION_TIMEOUT);
-		} while (!hasCalculatedDelay);
+		} while (!hasCalculatedDelay);*/
+		
+			int newLeaderIndex = findNewLeaderIndex(faultyIndexes, references);
+			ActorRef newLeader = references.get(newLeaderIndex);
+			system.log().info("New leader index: " + newLeaderIndex);
+
+			// Elect new leader
+			newLeader.tell(new LeaderSelectionMsg(newLeaderIndex + 1), ActorRef.noSender());
+			// Subsequent Delays
+			Thread.sleep(LEADER_ELECTION_TIMEOUT);
 
 		while (decideCount.get() < N / 2) {
+			System.out.println(decideCount.get());
 			// Wait for majority to decide
 		}
 		system.log().info("verified majority has decided");
@@ -164,6 +168,7 @@ public class Main {
 		// Run experiments repeatedly
 		for (int i = 0; i < NUMBER_OF_EXPERIMENTS; i++) {
 			system.log().info("Starting experiment " + (i + 1));
+			startTime = System.currentTimeMillis();
 			runOnce(system, references); // TODO: system output got elect leader, but no effect to process. Can find a
 											// way to eliminate it?
 			experimentsDone++;
