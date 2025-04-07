@@ -40,6 +40,11 @@
             <version>4.13.2</version>
             <scope>test</scope>
         </dependency>
+        <dependency>
+    		<groupId>org.knowm.xchart</groupId>
+    		<artifactId>xchart</artifactId>
+    		<version>3.8.5</version> <!-- Use the latest version available -->
+		</dependency>
     </dependencies>
     <build>
         <plugins>

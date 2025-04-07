@@ -7,9 +7,15 @@ import akka.actor.Cancellable;
 import java.time.Duration;
 import java.util.*;
 import java.util.Scanner; 
-
 import java.util.ArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
+
+//Import XChart classes
+import org.knowm.xchart.*;
+import org.knowm.xchart.BitmapEncoder;
+import org.knowm.xchart.BitmapEncoder.BitmapFormat;
+import org.knowm.xchart.style.markers.SeriesMarkers;
+import java.io.IOException;
 
 public class Main {
 	private static final int[] LEADER_ELECTION_TIMEOUT = {500, 1000, 1500, 2000}; // 500, 1000, 1500, 2000
@@ -29,11 +35,11 @@ public class Main {
 	private static long[] consensusDelays;
 	private static int experimentsDone = 0;
 
-	
+    private static List<ResultData> resultDataList = new ArrayList<>();
 	
 	public static void main(String[] args) throws InterruptedException {
 		
-		Scanner scanner = new Scanner(System.in);
+		//Scanner scanner = new Scanner(System.in);
 		
 		for (int tle : LEADER_ELECTION_TIMEOUT) { // Iterate through timeout values
             for (int nIdx = 0; nIdx < N.length; nIdx++) { // N and f are related by index
@@ -60,7 +66,7 @@ public class Main {
                         references.add(a);
                     }
 
-                    // Existing setup code (unchanged)
+                    
                     Members m = new Members(references);
                     for (ActorRef actor : references) {
                         actor.tell(m, ActorRef.noSender());
@@ -72,18 +78,105 @@ public class Main {
                         experimentsDone++;
                     }
 
-                    calculateAverageConsensusDelay(); // Now shows results per combination
+                    double averageConsensusDelay = calculateAverageConsensusDelay(); // Now shows results per combination
+                    resultDataList.add(new ResultData(currentN, currentF, tle, alpha, averageConsensusDelay));
                     system.terminate();
+                    
+                    /*
                     System.out.println("\nPress 'q' + Enter to continue...");
                     while (true) {
                         String input = scanner.nextLine().trim();
                         if (input.equalsIgnoreCase("q")) break;
                         System.out.println("Invalid input. Press 'q' + Enter:");
                     }
+                    */
                 }
             }
         }
+		generateCharts();
     }
+	
+	private static class ResultData {
+        public final int n;
+        public final int f;
+        public final int tle;
+        public final double alpha;
+        public final double averageDelay;
+
+        public ResultData(int n, int f, int tle, double alpha, double averageDelay) {
+            this.n = n;
+            this.f = f;
+            this.tle = tle;
+            this.alpha = alpha;
+            this.averageDelay = averageDelay;
+        }
+    }
+	
+    private static void generateCharts() {
+        Map<Integer, List<Double>> nData = new HashMap<>();
+        Map<Double, List<Double>> alphaData = new HashMap<>();
+        Map<Integer, List<Double>> tleData = new HashMap<>();
+
+        for (ResultData data : resultDataList) {
+            nData.computeIfAbsent(data.n, k -> new ArrayList<>()).add(data.averageDelay);
+            alphaData.computeIfAbsent(data.alpha, k -> new ArrayList<>()).add(data.averageDelay);
+            tleData.computeIfAbsent(data.tle, k -> new ArrayList<>()).add(data.averageDelay);
+        }
+
+        Map<Integer, Double> nAverages = computeAverages(nData);
+        Map<Double, Double> alphaAverages = computeAverages(alphaData);
+        Map<Integer, Double> tleAverages = computeAverages(tleData);
+
+        createAndSaveChart(nAverages, "N", "Average Consensus Delay vs N", "N", "Average Delay (ms)");
+        createAndSaveChart(alphaAverages, "ALPHA", "Average Consensus Delay vs ALPHA", "ALPHA", "Average Delay (ms)");
+        createAndSaveChart(tleAverages, "TLE", "Average Consensus Delay vs LEADER_ELECTION_TIMEOUT", "LEADER_ELECTION_TIMEOUT (ms)", "Average Delay (ms)");
+    }
+
+    private static <T> Map<T, Double> computeAverages(Map<T, List<Double>> data) {
+        Map<T, Double> averages = new HashMap<>();
+        for (Map.Entry<T, List<Double>> entry : data.entrySet()) {
+            T key = entry.getKey();
+            List<Double> values = entry.getValue();
+            double sum = values.stream().mapToDouble(Double::doubleValue).sum();
+            averages.put(key, sum / values.size());
+        }
+        return averages;
+    }
+
+    private static <T> void createAndSaveChart(Map<T, Double> data, String parameter, String title, String xAxisTitle, String yAxisTitle) {
+        List<T> sortedKeys = new ArrayList<>(data.keySet());
+        sortedKeys.sort((a, b) -> {
+            if (a instanceof Number && b instanceof Number) {
+                return Double.compare(((Number) a).doubleValue(), ((Number) b).doubleValue());
+            }
+            return 0;
+        });
+
+        List<Number> xValues = new ArrayList<>();
+        List<Double> yValues = new ArrayList<>();
+        for (T key : sortedKeys) {
+            if (key instanceof Number) {
+                xValues.add((Number) key);
+            }
+            yValues.add(data.get(key));
+        }
+
+        XYChart chart = new XYChartBuilder().width(800).height(600).title(title).xAxisTitle(xAxisTitle).yAxisTitle(yAxisTitle).build();
+        chart.getStyler().setDefaultSeriesRenderStyle(XYSeries.XYSeriesRenderStyle.Line);
+        chart.getStyler().setMarkerSize(8);
+
+        double[] xData = xValues.stream().mapToDouble(Number::doubleValue).toArray();
+        double[] yData = yValues.stream().mapToDouble(Double::doubleValue).toArray();
+
+        chart.addSeries(parameter, xData, yData);
+
+        try {
+            BitmapEncoder.saveBitmapWithDPI(chart, "./" + parameter + "_chart", BitmapFormat.PNG, 300);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+	
 	
 	// Send special crash messages to f processes at random
 	private static void sendCrashMessages(ArrayList<Integer> randomIndexes, ArrayList<ActorRef> references, int currentF) {
@@ -129,7 +222,7 @@ public class Main {
 		decideCount.set(0);
 	}
 
-	private static void calculateAverageConsensusDelay() {
+	private static double calculateAverageConsensusDelay() {
 		long totalConsensusDelay = 0;
 		for (int i = 0; i < NUMBER_OF_EXPERIMENTS; i++) {
 			System.out.println("Experiment " + (i + 1) + " consensus delay: " + consensusDelays[i] + " ms");
@@ -140,6 +233,7 @@ public class Main {
 		System.out.println(ONE_LINE);
 		System.out.println("Average consensus delay: " + averageConsensusDelay + " ms");
 		System.out.println(ONE_LINE);
+		return averageConsensusDelay;
 	}
 
 	private static void runOnce(ActorSystem system, ArrayList<ActorRef> references, int currentN, int currentF, int currentTLE) throws InterruptedException {
