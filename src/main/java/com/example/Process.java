@@ -30,17 +30,18 @@ public class Process extends UntypedAbstractActor {
 	private boolean isSilentMode = false;
 	private boolean isDebugMode = false; // For debugging purposes
 
-	private static final double CRASH_PROBABILITY = 0;
+	private final double CRASH_PROBABILITY;
 
-	public Process(int ID, int nb) {
+	public Process(int ID, int nb, double crash) {
 		this.id = ID;
 		this.N = nb;
 		this.ballot = ID - nb;
 		this.imposeballot = ID - nb;
+		this.CRASH_PROBABILITY = crash;
 	}
-	
-	public static Props createActor(int ID, int nb) {
-		return Props.create(Process.class, () -> new Process(ID, nb));
+
+	public static Props createActor(int ID, int nb, double crash) {
+		return Props.create(Process.class, () -> new Process(ID, nb, crash));
 	}
 
 	private void handleLaunch() {
@@ -48,12 +49,31 @@ public class Process extends UntypedAbstractActor {
 		propose(value);
 	}
 
+	private void handleReset() {
+		// 清除進程的所有狀態
+		decided = false;
+		proposal = null;
+		estimate = null;
+		ballot = id - N;
+		readballot = 0;
+		imposeballot = id - N;
+		msgballot = 0;
+		states.clear();
+		ackResponses.clear();
+		estimateMap.clear();
+		hold = false;
+		isFaultProneMode = false;
+		isSilentMode = false;
+
+		//log.info("Process {} has been reset.", id); // 新增日誌，確認重置
+	}
+
 	private void startLeadership() {
 		if (decided) {
-			return; 
+			return;
 		}
 
-		log.info("Process {} is elected as leader. Sending HOLD message...", id);
+		//log.info("Process {} is elected as leader. Sending HOLD message...", id);
 		for (ActorRef actor : processes.references) {
 			if (!actor.equals(self())) {
 				actor.tell(new HoldMsg(), self());
@@ -62,10 +82,10 @@ public class Process extends UntypedAbstractActor {
 	}
 
 	private void handleHold() {
-		//log.info("Process {} received HOLD message. Stopping propose operations.", id);
+		// log.info("Process {} received HOLD message. Stopping propose operations.",
+		// id);
 		hold = true;
 	}
-
 
 	private void propose(String v) { // TODO: change to int?
 		if (decided)
@@ -75,8 +95,13 @@ public class Process extends UntypedAbstractActor {
 		ballot += N;
 		states.clear();
 
-		 log.info("Process {} proposes message: {}", id, v);
+		//log.info("Process {} proposes message: {}", id, v);
 
+		/*try {
+			Thread.sleep(500); // 提案過程延遲
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+		}*/
 
 		for (ActorRef actor : processes.references) {
 			if (!actor.equals(self())) {
@@ -90,11 +115,10 @@ public class Process extends UntypedAbstractActor {
 
 			states.clear();
 			ackResponses.clear();
-			if(!hold)
+			if (!hold)
 				propose(proposal);
 		}
 	}
-
 
 	private void handleReadRequest(int b, ActorRef sender) {
 
@@ -104,14 +128,19 @@ public class Process extends UntypedAbstractActor {
 			readballot = b;
 			sender.tell(new GatherMsg(b, imposeballot, estimate), self());
 
-			
 			if (isDebugMode) { // Output more info
-				log.info("Process {} accepts ReadMsg and sends GatherMsg: new readballot={}, imposeballot={}, estimate={}",
-			 id, readballot, imposeballot, estimate);
+				log.info(
+						"Process {} accepts ReadMsg and sends GatherMsg: new readballot={}, imposeballot={}, estimate={}",
+						id, readballot, imposeballot, estimate);
 			}
+			/*try {
+				Thread.sleep(500); // 提案過程延遲
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}*/
+
 		}
 	}
-
 
 	private void handleReadResponse(int b, int estBallot, String est, ActorRef sender) {
 		if (imposeballot == ballot) {
@@ -126,7 +155,7 @@ public class Process extends UntypedAbstractActor {
 
 			for (Map.Entry<ActorRef, int[]> entry : states.entrySet()) {
 				int[] state = entry.getValue();
-				if (state[0] > maxBallot) { 
+				if (state[0] > maxBallot) {
 					maxBallot = state[0];
 					if (estimateMap.get(entry.getKey()) != null) {
 						selectedValue = estimateMap.get(entry.getKey());
@@ -141,7 +170,7 @@ public class Process extends UntypedAbstractActor {
 
 			ackResponses.clear();
 
-			//log.info("Process {} moves to write phase with proposal: {}", id, proposal);
+			// log.info("Process {} moves to write phase with proposal: {}", id, proposal);
 
 			for (ActorRef actor : processes.references) {
 				if (!actor.equals(self())) {
@@ -151,23 +180,24 @@ public class Process extends UntypedAbstractActor {
 		}
 	}
 
-
 	private void handleImposeRequest(int b, String v, ActorRef sender) {
 		if (readballot > b || imposeballot > b) {
-			//log.info("abort impose readballot = {}, imposeballot = {}, recieved ballot = {} ", readballot, imposeballot, b );
+			// log.info("abort impose readballot = {}, imposeballot = {}, recieved ballot =
+			// {} ", readballot, imposeballot, b );
 			sender.tell(new AbortMsg(b), self());
 		} else {
-			//log.info("process {} accept impose readballot = {}, imposeballot = {}, recieved ballot = {} ", id , readballot, imposeballot, b );
+			// log.info("process {} accept impose readballot = {}, imposeballot = {},
+			// recieved ballot = {} ", id , readballot, imposeballot, b );
 			estimate = v;
 			imposeballot = b;
 			sender.tell(new AckMsg(b), self());
 
-			
 			if (isDebugMode) { // Output more info
-				log.info("Process {} accepts ImposMsg and sends AckMsg: new readballot={}, imposeballot={}, estimate={}",
+				log.info(
+						"Process {} accepts ImposMsg and sends AckMsg: new readballot={}, imposeballot={}, estimate={}",
 						id, readballot, imposeballot, estimate);
 			}
-			 
+
 		}
 	}
 
@@ -176,11 +206,17 @@ public class Process extends UntypedAbstractActor {
 			return;
 
 		ackResponses.put(sender, b);
-		//log.info("Process {} recieves ack message, with ballot:{} total ack received: {}", id, b, ackResponses.size());
+		// log.info("Process {} recieves ack message, with ballot:{} total ack received:
+		// {}", id, b, ackResponses.size());
+		/*try {
+			Thread.sleep(500); 
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+		}*/
 		if (ackResponses.size() >= N / 2) {
 			Main.reportDelay(id);
 			decided = true;
-			//log.info("Process {} decides on message: {}  with ballot: {}", id, proposal ,b);
+			//log.info("Process {} decides on message: {}  with ballot: {}", id, proposal, b);
 			for (ActorRef actor : processes.references) {
 				if (!actor.equals(self())) {
 					actor.tell(new DecideMsg(proposal, id, b), self());
@@ -190,18 +226,17 @@ public class Process extends UntypedAbstractActor {
 		}
 	}
 
-	
 	private void handleDecide(String v, int from, int b) {
-		if(b>msgballot) {
+		if (b > msgballot) {
 			estimate = v;
 			msgballot = b;
-		}
-		else{
-			//log.info("Process {} msgballot: {} from process {} with ballot {}", id,msgballot, from, b );
+		} else {
+			// log.info("Process {} msgballot: {} from process {} with ballot {}",
+			// id,msgballot, from, b );
 			return;
 		}
 		decided = true;
-		//log.info("Process {} final decision: {} from process {} with ballot {}", id, v, from, b );
+		//log.info("Process {} final decision: {} from process {} with ballot {}", id, v, from, b);
 		for (ActorRef actor : processes.references) {
 			if (!actor.equals(self())) {
 				actor.tell(new DecideMsg(v, from, msgballot), self());
@@ -211,14 +246,13 @@ public class Process extends UntypedAbstractActor {
 		int count = Main.decideCount.incrementAndGet();
 	}
 
-
 	private boolean determineIfWillCrash() {
 		if (Math.random() >= CRASH_PROBABILITY) {
 			return false;
 		}
 		// Process will crash
 		isSilentMode = true;
-		log.info("Process {} has crashed prob = {}.", id, CRASH_PROBABILITY);
+		//log.info("Process {} has crashed prob = {}.", id, CRASH_PROBABILITY);
 		return true;
 	}
 
@@ -248,7 +282,12 @@ public class Process extends UntypedAbstractActor {
 	}
 
 	@Override
+
 	public void onReceive(Object message) {
+		if (message instanceof ResetMsg) {
+			handleReset();
+			return;
+		}
 		if (message instanceof RestartMsg) {
 			handleRestart();
 			return;
@@ -269,7 +308,7 @@ public class Process extends UntypedAbstractActor {
 		} else if (message instanceof CrashMsg) {
 			isFaultProneMode = true;
 		} else if (message instanceof LeaderSelectionMsg) {
-			startLeadership(); 
+			startLeadership();
 		} else if (message instanceof HoldMsg) {
 			handleHold();
 		} else if (message instanceof ReadMsg) {

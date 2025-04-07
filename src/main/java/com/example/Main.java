@@ -3,6 +3,7 @@ package com.example;
 import akka.actor.ActorRef;
 import akka.actor.ActorSystem;
 import akka.actor.Cancellable;
+import akka.actor.PoisonPill;
 
 import java.time.Duration;
 import java.util.*;
@@ -12,18 +13,18 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 public class Main {
 	private static final int LEADER_ELECTION_TIMEOUT = 500; // 500, 1000, 1500, 2000
-	private static final int DELAY_BETWEEN_EXPERIMENTS = 1500;
-	private static final int NUMBER_OF_EXPERIMENTS = 5;
+	private static final int DELAY_BETWEEN_EXPERIMENTS = 500;
+	private static final int NUMBER_OF_EXPERIMENTS = 15;
 	private static final String ONE_LINE = "--------------------------------------------------";
-	
-	public static final int N = 10; // 3,10,100
-	private static final int f = 4; // Number of processes that may crash // 1,4,49
-	public static long startTime; 
+
+	public static final int N = 100; // 3,10,100
+	private static final int f = 49; // Number of processes that may crash // 1,4,49
+	public static long startTime;
 	private static ArrayList<ActorRef> references; // List of process references
-	
+
 	public static AtomicInteger decideCount = new AtomicInteger(0);
 	private static boolean hasCalculatedDelay = false;
-	
+
 	private static long[] consensusDelays;
 	private static int experimentsDone = 0;
 
@@ -63,13 +64,17 @@ public class Main {
 	}
 
 	private static void resetSystem() {
-		hasCalculatedDelay = false; 
+		hasCalculatedDelay = false;
 		decideCount.set(0);
+		for (ActorRef actor : references) {
+			actor.tell(PoisonPill.getInstance(), ActorRef.noSender()); // 通知 Actor 結束
+		}
+		references.clear();
 	}
 
-	private static void calculateAverageConsensusDelay() {
+	private static void calculateAverageConsensusDelay(int start) {
 		long totalConsensusDelay = 0;
-		for (int i = 0; i < NUMBER_OF_EXPERIMENTS; i++) {
+		for (int i = start - 4; i < start + 1; i++) {
 			System.out.println("Experiment " + (i + 1) + " consensus delay: " + consensusDelays[i] + " ms");
 			totalConsensusDelay += consensusDelays[i];
 		}
@@ -80,7 +85,20 @@ public class Main {
 		System.out.println(ONE_LINE);
 	}
 
-	private static void runOnce(ActorSystem system, ArrayList<ActorRef> references) throws InterruptedException {
+	private static void runOnce(ActorSystem system, ArrayList<ActorRef> references, double crash)
+			throws InterruptedException {
+		for (int i = 0; i < N; i++) {
+			// Instantiate processes
+			String actorName = "actor_" + i + "_" + System.nanoTime();
+			final ActorRef a = system.actorOf(Process.createActor(i + 1, N, crash), actorName);
+			references.add(a);
+		}
+
+		// give each process a view of all the other processes
+		Members m = new Members(references);
+		for (ActorRef actor : references) {
+			actor.tell(m, ActorRef.noSender());
+		}
 		ArrayList<Integer> faultyIndexes = getFaultyIndexes();
 		sendCrashMessages(faultyIndexes, references);
 
@@ -90,31 +108,17 @@ public class Main {
 
 		// First Delay before leader election
 		Thread.sleep(LEADER_ELECTION_TIMEOUT);
-		/* if you want can uncomment
-		 * 
-		 * do {
-			// Choose new leader
-			int newLeaderIndex = findNewLeaderIndex(faultyIndexes, references);
-			ActorRef newLeader = references.get(newLeaderIndex);
-			system.log().info("New leader index: " + newLeaderIndex);
+		int newLeaderIndex = findNewLeaderIndex(faultyIndexes, references);
+		ActorRef newLeader = references.get(newLeaderIndex);
+		//system.log().info("New leader index: " + newLeaderIndex);
 
-			// Elect new leader
-			newLeader.tell(new LeaderSelectionMsg(newLeaderIndex + 1), ActorRef.noSender());
-			// Subsequent Delays
-			Thread.sleep(LEADER_ELECTION_TIMEOUT);
-		} while (!hasCalculatedDelay);*/
-		
-			int newLeaderIndex = findNewLeaderIndex(faultyIndexes, references);
-			ActorRef newLeader = references.get(newLeaderIndex);
-			system.log().info("New leader index: " + newLeaderIndex);
-
-			// Elect new leader
-			newLeader.tell(new LeaderSelectionMsg(newLeaderIndex + 1), ActorRef.noSender());
-			// Subsequent Delays
-			Thread.sleep(LEADER_ELECTION_TIMEOUT);
+		// Elect new leader
+		newLeader.tell(new LeaderSelectionMsg(newLeaderIndex + 1), ActorRef.noSender());
+		// Subsequent Delays
+		Thread.sleep(LEADER_ELECTION_TIMEOUT);
 
 		while (decideCount.get() < N / 2) {
-			System.out.println(decideCount.get());
+			// System.out.println(decideCount.get());
 			// Wait for majority to decide
 		}
 		system.log().info("verified majority has decided");
@@ -153,28 +157,32 @@ public class Main {
 
 		// change tle (timeout leader election)
 		// change a (crash probability)
-		for (int i = 0; i < N; i++) {
-			// Instantiate processes
-			final ActorRef a = system.actorOf(Process.createActor(i + 1, N), "" + i);
-			references.add(a);
-		}
-
-		// give each process a view of all the other processes
-		Members m = new Members(references);
-		for (ActorRef actor : references) {
-			actor.tell(m, ActorRef.noSender());
-		}
 
 		// Run experiments repeatedly
 		for (int i = 0; i < NUMBER_OF_EXPERIMENTS; i++) {
 			system.log().info("Starting experiment " + (i + 1));
 			startTime = System.currentTimeMillis();
-			runOnce(system, references); // TODO: system output got elect leader, but no effect to process. Can find a
-											// way to eliminate it?
+			if (i < 5) {
+				runOnce(system, references, 0);
+			} else if (i < 10) {
+				runOnce(system, references, 0.1);
+			} else {
+				runOnce(system, references, 1);
+			}
+			// TODO: system output got elect leader, but no effect to process. Can find a
+			if (i == 4) {
+				calculateAverageConsensusDelay(i);
+			} else if (i == 9) {
+				calculateAverageConsensusDelay(i);
+			} else if (i == 14) {
+				calculateAverageConsensusDelay(i);
+
+			}
+
 			experimentsDone++;
+
 		}
 		// Calculate consensus delay average
-		calculateAverageConsensusDelay();
 
 		system.terminate(); // Terminate the actor system
 		System.out.println("System has terminated.");
