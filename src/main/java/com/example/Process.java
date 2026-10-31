@@ -25,7 +25,10 @@ public class Process extends UntypedAbstractActor {
 	private Members processes;
 	private Map<ActorRef, int[]> states = new HashMap<>();
 	private Map<ActorRef, Integer> ackResponses = new HashMap<>();
-	private Map<ActorRef, String> estimateMap = new HashMap<>();
+	// Value carried by the highest imposeballot seen in the current read phase
+	private int highestEstBallot = Integer.MIN_VALUE;
+	private String highestEst = null;
+	private boolean imposeSent = false;
 
 	private boolean hold = false;
 	private boolean decided = false;
@@ -33,7 +36,6 @@ public class Process extends UntypedAbstractActor {
 	private boolean isSilentMode = false;
 	private boolean isDebugMode = false; // For debugging purposes
 
-	private static final double CRASH_PROBABILITY = 0;
 
 	public Process(int ID, int nb, int f, int tle, double alpha) {
 		this.id = ID;
@@ -67,15 +69,20 @@ public class Process extends UntypedAbstractActor {
 		}
 
 		log.info("Process {} is elected as leader. Sending HOLD message...", id);
+		hold = false;
 		for (ActorRef actor : processes.references) {
 			if (!actor.equals(self())) {
 				actor.tell(new HoldMsg(), self());
 			}
 		}
+		// Make sure the leader is driving a ballot that the others no longer interrupt
+		if (proposal == null) {
+			proposal = (Math.random() >= 0.5) ? "1" : "0";
+		}
+		propose(proposal);
 	}
 
 	private void handleHold() {
-		//log.info("Process {} received HOLD message. Stopping propose operations.", id);
 		hold = true;
 	}
 
@@ -87,23 +94,30 @@ public class Process extends UntypedAbstractActor {
 		proposal = v;
 		ballot += N;
 		states.clear();
+		ackResponses.clear();
+		highestEstBallot = Integer.MIN_VALUE;
+		highestEst = null;
+		imposeSent = false;
 
-		 log.info("Process {} proposes message: {}", id, v);
+		if (isDebugMode) {
+			log.info("Process {} proposes message: {}", id, v);
+		}
 
-
+		// The proposer is also an acceptor, so it sends to itself as well
 		for (ActorRef actor : processes.references) {
-			if (!actor.equals(self())) {
-				actor.tell(new ReadMsg(ballot), self());
-			}
+			actor.tell(new ReadMsg(ballot), self());
 		}
 	}
 
-	private void handleAbort(int b) {
-		if (b == ballot) {
+	private int majority() {
+		return N / 2 + 1;
+	}
 
+	private void handleAbort(int b) {
+		if (b == ballot && !decided) {
 			states.clear();
 			ackResponses.clear();
-			if(!hold)
+			if (!hold)
 				propose(proposal);
 		}
 	}
@@ -127,39 +141,27 @@ public class Process extends UntypedAbstractActor {
 
 
 	private void handleReadResponse(int b, int estBallot, String est, ActorRef sender) {
-		if (imposeballot == ballot) {
+		// Ignore stale replies and replies arriving after the impose phase started
+		if (decided || b != ballot || imposeSent) {
 			return;
 		}
 
 		states.put(sender, new int[] { estBallot, est != null ? 1 : 0 });
+		if (est != null && estBallot > highestEstBallot) {
+			highestEstBallot = estBallot;
+			highestEst = est;
+		}
 
-		if (states.size() >= N / 2) {
-			int maxBallot = -1;
-			String selectedValue = null;
-
-			for (Map.Entry<ActorRef, int[]> entry : states.entrySet()) {
-				int[] state = entry.getValue();
-				if (state[0] > maxBallot) { 
-					maxBallot = state[0];
-					if (estimateMap.get(entry.getKey()) != null) {
-						selectedValue = estimateMap.get(entry.getKey());
-					} else
-						selectedValue = proposal;
-				}
+		if (states.size() >= majority()) {
+			// Safety: adopt the value of the highest ballot already accepted by someone
+			if (highestEst != null) {
+				proposal = highestEst;
 			}
-
-			if (maxBallot > 0) {
-				proposal = selectedValue;
-			}
-
+			imposeSent = true;
 			ackResponses.clear();
 
-			//log.info("Process {} moves to write phase with proposal: {}", id, proposal);
-
 			for (ActorRef actor : processes.references) {
-				if (!actor.equals(self())) {
-					actor.tell(new ImposeMsg(ballot, proposal), self());
-				}
+				actor.tell(new ImposeMsg(ballot, proposal), self());
 			}
 		}
 	}
@@ -185,53 +187,45 @@ public class Process extends UntypedAbstractActor {
 	}
 
 	private void handleAckResponse(int b, ActorRef sender) {
-		if (decided)
+		if (decided || b != ballot) // ignore acks of an older ballot
 			return;
 
 		ackResponses.put(sender, b);
-		//log.info("Process {} recieves ack message, with ballot:{} total ack received: {}", id, b, ackResponses.size());
-		if (ackResponses.size() >= N / 2) {
-			Main.reportDelay(id);
-			decided = true;
-			//log.info("Process {} decides on message: {}  with ballot: {}", id, proposal ,b);
-			for (ActorRef actor : processes.references) {
-				if (!actor.equals(self())) {
-					actor.tell(new DecideMsg(proposal, id, b), self());
-				}
-			}
-			int count = Main.decideCount.incrementAndGet();
+		if (ackResponses.size() >= majority()) {
+			decide(proposal, b);
 		}
 	}
 
-	
 	private void handleDecide(String v, int from, int b) {
-		if(b>msgballot) {
-			estimate = v;
-			msgballot = b;
-		}
-		else{
-			//log.info("Process {} msgballot: {} from process {} with ballot {}", id,msgballot, from, b );
+		if (decided) {
 			return;
 		}
+		decide(v, b);
+	}
+
+	// Decide once, then relay so every live process learns the value
+	private void decide(String v, int b) {
 		decided = true;
-		//log.info("Process {} final decision: {} from process {} with ballot {}", id, v, from, b );
+		estimate = v;
+		msgballot = b;
+		Main.reportDecision(id, v);
 		for (ActorRef actor : processes.references) {
 			if (!actor.equals(self())) {
-				actor.tell(new DecideMsg(v, from, msgballot), self());
+				actor.tell(new DecideMsg(v, id, b), self());
 			}
 		}
-
-		int count = Main.decideCount.incrementAndGet();
 	}
 
 
 	private boolean determineIfWillCrash() {
-		if (Math.random() >= CRASH_PROBABILITY) {
+		if (Math.random() >= alpha) {
 			return false;
 		}
 		// Process will crash
 		isSilentMode = true;
-		log.info("Process {} has crashed prob = {}.", id, CRASH_PROBABILITY);
+		if (isDebugMode) {
+			log.info("Process {} has crashed prob = {}.", id, alpha);
+		}
 		return true;
 	}
 
@@ -246,7 +240,9 @@ public class Process extends UntypedAbstractActor {
 		estimate = null;
 		states.clear();
 		ackResponses.clear();
-		estimateMap.clear();
+		highestEstBallot = Integer.MIN_VALUE;
+		highestEst = null;
+		imposeSent = false;
 		hold = false;
 		decided = false;
 		isFaultProneMode = false;
