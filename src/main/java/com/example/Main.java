@@ -9,6 +9,7 @@ import java.util.*;
 import java.util.Scanner; 
 import java.util.ArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.LockSupport;
 
 //Import XChart classes
 import org.knowm.xchart.*;
@@ -19,8 +20,10 @@ import java.io.IOException;
 
 public class Main {
 	private static final int[] LEADER_ELECTION_TIMEOUT = {500, 1000, 1500, 2000}; // 500, 1000, 1500, 2000
-	private static final int DELAY_BETWEEN_EXPERIMENTS = 1500;
-	private static final int NUMBER_OF_EXPERIMENTS = 5;
+	private static final int DELAY_BETWEEN_EXPERIMENTS = 20; // let the previous run's stray messages drain
+	// Runs per configuration, override with -Druns=<n>
+	private static final int NUMBER_OF_EXPERIMENTS = Integer.getInteger("runs", 100);
+	private static final int WARMUP_RUNS = Integer.getInteger("warmup", 30); // discarded, lets the JIT warm up
 	private static final int RUN_TIMEOUT_MS = 60000; // give up on a run that never reaches a majority
 	private static final String ONE_LINE = "--------------------------------------------------";
 	
@@ -31,6 +34,8 @@ public class Main {
 	private static ArrayList<ActorRef> references; // List of process references
 	
 	public static AtomicInteger decideCount = new AtomicInteger(0);
+	private static volatile int currentRunId = 0; // decisions from older runs are ignored
+	private static boolean recording = true;
 	private static boolean hasCalculatedDelay = false;
 	private static Set<String> decidedValues = new HashSet<>();
 	private static double majorityDelay = -1;
@@ -47,6 +52,18 @@ public class Main {
 		
 		//Scanner scanner = new Scanner(System.in);
 		
+		final ActorSystem system = ActorSystem.create("system");
+		long sweepStart = System.currentTimeMillis();
+
+		// Warm-up runs (not recorded) so the first configuration is not measured on a cold JVM
+		recording = false;
+		consensusDelays = new double[1];
+		for (int w = 0; w < WARMUP_RUNS; w++) {
+			int nIdx = w % N.length;
+			runOnce(system, N[nIdx], f[nIdx], LEADER_ELECTION_TIMEOUT[0], ALPHA[w % ALPHA.length], 0);
+		}
+		recording = true;
+
 		for (int tle : LEADER_ELECTION_TIMEOUT) { // Iterate through timeout values
             for (int nIdx = 0; nIdx < N.length; nIdx++) { // N and f are related by index
                 int currentN = N[nIdx];
@@ -59,35 +76,13 @@ public class Main {
                     consensusDelays = new double[NUMBER_OF_EXPERIMENTS]; // Reset for each combination
                     experimentsDone = 0;
 
-                    final ActorSystem system = ActorSystem.create("system");
-                    references = new ArrayList<>();
-
-                    // Create processes with current parameters
-                    for (int i = 0; i < currentN; i++) {
-                        // Modified createActor() call (change in Process class required)
-                        final ActorRef a = system.actorOf(
-                            Process.createActor(i+1, currentN, currentF, tle, alpha), 
-                            ""+i
-                        );
-                        references.add(a);
-                    }
-
-                    
-                    Members m = new Members(references);
-                    for (ActorRef actor : references) {
-                        actor.tell(m, ActorRef.noSender());
-                    }
-
                     for (int exp = 0; exp < NUMBER_OF_EXPERIMENTS; exp++) {
-                        // Modified runOnce() call
-                        runOnce(system, references, currentN, currentF, tle, alpha, exp);
+                        runOnce(system, currentN, currentF, tle, alpha, exp);
                         experimentsDone++;
                     }
 
                     double averageConsensusDelay = calculateAverageConsensusDelay(); // Now shows results per combination
                     resultDataList.add(new ResultData(currentN, currentF, tle, alpha, averageConsensusDelay));
-                    system.terminate();
-                    system.getWhenTerminated().toCompletableFuture().join();
                     
                     /*
                     System.out.println("\nPress 'q' + Enter to continue...");
@@ -100,8 +95,12 @@ public class Main {
                 }
             }
         }
+		system.terminate();
+		system.getWhenTerminated().toCompletableFuture().join();
 		generateCharts();
 		writeCsv();
+		System.out.printf("Sweep took %.1f s (%d runs per configuration)%n",
+				(System.currentTimeMillis() - sweepStart) / 1000.0, NUMBER_OF_EXPERIMENTS);
 		System.out.println(ONE_LINE);
 		System.out.println("Agreement violations: " + agreementViolations + ", timed-out runs: " + timedOutRuns);
     }
@@ -252,7 +251,6 @@ public class Main {
 	private static double calculateAverageConsensusDelay() {
 		double totalConsensusDelay = 0;
 		for (int i = 0; i < NUMBER_OF_EXPERIMENTS; i++) {
-			System.out.printf(Locale.US, "Experiment %d consensus delay: %.3f ms%n", i + 1, consensusDelays[i]);
 			totalConsensusDelay += consensusDelays[i];
 		}
 
@@ -263,8 +261,22 @@ public class Main {
 		return averageConsensusDelay;
 	}
 
-	private static void runOnce(ActorSystem system, ArrayList<ActorRef> references, int currentN, int currentF, int currentTLE,
+	private static void runOnce(ActorSystem system, int currentN, int currentF, int currentTLE,
 			double alpha, int exp) throws InterruptedException {
+		// Fresh actors for every run ("restart all actors"): stray messages from the previous run cannot reach them
+		int runId = currentRunId + 1;
+		references = new ArrayList<>();
+		for (int i = 0; i < currentN; i++) {
+			references.add(system.actorOf(Process.createActor(i + 1, currentN, currentF, currentTLE, alpha, runId),
+					"r" + runId + "_" + i));
+		}
+		Members m = new Members(references);
+		for (ActorRef actor : references) {
+			actor.tell(m, ActorRef.noSender());
+		}
+		currentRunId = runId;
+		Thread.sleep(5); // let the actors start before the clock starts
+
 		ArrayList<Integer> faultyIndexes = getFaultyIndexes(currentN, currentF);
 		startTime = System.nanoTime();
 		sendCrashMessages(faultyIndexes, references, currentF);
@@ -273,21 +285,21 @@ public class Main {
 			actor.tell(new LaunchMsg(), ActorRef.noSender());
 		}
 
-		// First Delay before leader election
-		Thread.sleep(currentTLE);
-
-		// Elect a non fault-prone leader; if no majority has decided after another TLE, elect again
-		int elections = 0;
-		long deadline = System.currentTimeMillis() + RUN_TIMEOUT_MS;
+		// Wait until a majority decides. Every TLE without a majority, elect a non fault-prone leader.
+		// (A run that already reached a majority before the first TLE is finished; no need to sleep the full TLE.)
 		int majority = currentN / 2 + 1;
-		while (decideCount.get() < majority && System.currentTimeMillis() < deadline) {
-			int newLeaderIndex = findNewLeaderIndex(faultyIndexes, references, currentN);
-			references.get(newLeaderIndex).tell(new LeaderSelectionMsg(newLeaderIndex + 1), ActorRef.noSender());
-			elections++;
-			long nextElection = System.currentTimeMillis() + currentTLE;
-			while (decideCount.get() < majority && System.currentTimeMillis() < nextElection) {
-				Thread.sleep(1);
+		int elections = 0;
+		long tleNanos = currentTLE * 1_000_000L;
+		long nextElection = startTime + tleNanos;
+		long deadline = startTime + RUN_TIMEOUT_MS * 1_000_000L;
+		while (decideCount.get() < majority && System.nanoTime() < deadline) {
+			if (System.nanoTime() >= nextElection) {
+				int newLeaderIndex = findNewLeaderIndex(faultyIndexes, references, currentN);
+				references.get(newLeaderIndex).tell(new LeaderSelectionMsg(newLeaderIndex + 1), ActorRef.noSender());
+				elections++;
+				nextElection += tleNanos;
 			}
+			LockSupport.parkNanos(100_000); // poll every 0.1 ms
 		}
 
 		synchronized (Main.class) {
@@ -299,31 +311,20 @@ public class Main {
 				agreementViolations++;
 				System.out.println("AGREEMENT VIOLATION: decided values " + decidedValues);
 			}
-			runsCsv.append(String.format(Locale.US, "%d,%d,%d,%.1f,%d,%.3f,%.3f,%d,%s%n", currentN, currentF, currentTLE, alpha,
-					exp + 1, consensusDelays[experimentsDone], majorityDelay, elections, String.join("|", decidedValues)));
+			if (recording) {
+				runsCsv.append(String.format(Locale.US, "%d,%d,%d,%.1f,%d,%.3f,%.3f,%d,%s%n", currentN, currentF, currentTLE,
+						alpha, exp + 1, consensusDelays[experimentsDone], majorityDelay, elections,
+						String.join("|", decidedValues)));
+			}
 		}
 
-		Thread.sleep(DELAY_BETWEEN_EXPERIMENTS); // Sleep for a while to let processes finish
-		restartProcesses(); // Restart processes
-		Thread.sleep(DELAY_BETWEEN_EXPERIMENTS); // Sleep for a while to let restart finish
+		for (ActorRef actor : references) {
+			system.stop(actor);
+		}
+		Thread.sleep(DELAY_BETWEEN_EXPERIMENTS);
 		resetSystem();
-		return;
 	}
 
-	// Restart all processes after consensus delay is calculated
-	public static void restartProcesses() {
-		// Create restart message
-		RestartMsg restartMsg = new RestartMsg();
-		// Restart processes
-		for (ActorRef process : references) {
-			process.tell(restartMsg, ActorRef.noSender());
-		}
-		System.out.println("All processes have restarted.");
-	}
-
-	
-	
-	
 	/*
 	public static void main(String[] args) throws InterruptedException {
 		// Create array to store consensus delays
@@ -374,7 +375,10 @@ public class Main {
 	
 
 	// Called by a process when it decides (by majority of acks or by a DECIDE message)
-	public static synchronized void reportDecision(int ID, String value) {
+	public static synchronized void reportDecision(int runId, int ID, String value) {
+		if (runId != currentRunId) { // late message from an earlier run
+			return;
+		}
 		double delay = (System.nanoTime() - startTime) / 1e6;
 		decidedValues.add(value);
 		int count = decideCount.incrementAndGet();
@@ -385,7 +389,6 @@ public class Main {
 			return;
 		}
 		hasCalculatedDelay = true;
-		System.out.printf(Locale.US, "Process %d has reached DECIDE with consensus delay = %.3f ms%n", ID, delay);
 		consensusDelays[experimentsDone] = delay;
 	}
 }

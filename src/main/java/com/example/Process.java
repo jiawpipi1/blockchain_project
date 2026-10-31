@@ -16,6 +16,7 @@ public class Process extends UntypedAbstractActor {
 	private final int f;
 	private final int tle;
 	private final double alpha;
+	private final int runId; // experiment run this actor belongs to
 	private int ballot;
 	private int readballot = 0;
 	private int imposeballot;
@@ -38,6 +39,11 @@ public class Process extends UntypedAbstractActor {
 
 
 	public Process(int ID, int nb, int f, int tle, double alpha) {
+		this(ID, nb, f, tle, alpha, 0);
+	}
+
+	public Process(int ID, int nb, int f, int tle, double alpha, int runId) {
+		this.runId = runId;
 		this.id = ID;
 		this.N = nb;
 		this.ballot = ID - nb;
@@ -51,6 +57,10 @@ public class Process extends UntypedAbstractActor {
 	
 	public static Props createActor(int id, int n, int f, int tle, double alpha) {
 	    return Props.create(Process.class, () -> new Process(id, n, f, tle, alpha));
+	}
+
+	public static Props createActor(int id, int n, int f, int tle, double alpha, int runId) {
+	    return Props.create(Process.class, () -> new Process(id, n, f, tle, alpha, runId));
 	}
 	
 	/*
@@ -208,7 +218,7 @@ public class Process extends UntypedAbstractActor {
 		decided = true;
 		estimate = v;
 		msgballot = b;
-		Main.reportDecision(id, v);
+		Main.reportDecision(runId, id, v);
 		for (ActorRef actor : processes.references) {
 			if (!actor.equals(self())) {
 				actor.tell(new DecideMsg(v, id, b), self());
